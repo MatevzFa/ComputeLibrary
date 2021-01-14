@@ -230,7 +230,7 @@ if 'x86' not in env['arch']:
         elif env['os'] == 'bare_metal':
             prefix = "arm-eabi-"
         elif env['os'] == 'android':
-            prefix = "arm-linux-androideabi-"
+            prefix = ""
         elif env['os'] == 'tizen':
             prefix = "armv7l-tizen-linux-gnueabi-"
     elif env['estate'] == '64' and 'v8' in env['arch']:
@@ -239,7 +239,7 @@ if 'x86' not in env['arch']:
         elif env['os'] == 'bare_metal':
             prefix = "aarch64-elf-"
         elif env['os'] == 'android':
-            prefix = "aarch64-linux-android-"
+            prefix = ""
         elif env['os'] == 'tizen':
             prefix = "aarch64-tizen-linux-gnu-"
 
