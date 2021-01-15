@@ -24,6 +24,7 @@ export CC="$NDK_TOOLCHAIN_BIN/$ANDROID_ARCH-linux-android$ANDROID_API_LEVEL-clan
 export CXX="$NDK_TOOLCHAIN_BIN/$ANDROID_ARCH-linux-android$ANDROID_API_LEVEL-clang++"
 
 bear scons \
+    build_dir="build.$ANDROID_ABI-$ANDROID_API_LEVEL" \
     Werror=1 \
     -j8 \
     debug=0 assert=1 \
