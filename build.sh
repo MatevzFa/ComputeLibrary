@@ -23,11 +23,16 @@ export NDK_TOOLCHAIN_BIN="$NDK_TOOLCHAIN/bin"
 export CC="$NDK_TOOLCHAIN_BIN/$ANDROID_ARCH-linux-android$ANDROID_API_LEVEL-clang"
 export CXX="$NDK_TOOLCHAIN_BIN/$ANDROID_ARCH-linux-android$ANDROID_API_LEVEL-clang++"
 
-bear scons \
-    build_dir="build.$ANDROID_ABI-$ANDROID_API_LEVEL" \
+export build_dir="build.$ANDROID_ABI-$ANDROID_API_LEVEL"
+
+bear -o "build/$build_dir/compile_commands.json" scons \
+    build_dir="$build_dir" \
     Werror=1 \
+    examples=0 \
     -j8 \
-    debug=0 assert=1 \
+    debug=1 asserts=1 \
     neon=0 opencl=1 gles_compute=1 \
     embed_kernels=1 \
     os=android arch=$ANDROID_ABI
+
+cp "build/$build_dir/compile_commands.json" .
