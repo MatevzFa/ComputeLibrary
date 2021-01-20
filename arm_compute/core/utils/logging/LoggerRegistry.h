@@ -24,6 +24,7 @@
 #ifndef ARM_COMPUTE_LOGGING_LOGGER_REGISTRY_H
 #define ARM_COMPUTE_LOGGING_LOGGER_REGISTRY_H
 
+#include "arm_compute/core/utils/logging/AndroidPrinter.h"
 #include "arm_compute/core/utils/logging/Logger.h"
 #include "arm_compute/core/utils/logging/Printers.h"
 #include "arm_compute/core/utils/logging/Types.h"
@@ -40,7 +41,7 @@ namespace logging
 /** Registry class holding all the instantiated loggers */
 class LoggerRegistry final
 {
-public:
+    public:
     /** Gets registry instance
      *
      * @return Logger registry instance
@@ -55,7 +56,10 @@ public:
      * @param[in] printers  Printers to attach to the system loggers. Defaults with a @ref StdPrinter.
      */
     void create_logger(const std::string &name, LogLevel log_level = LogLevel::INFO,
-                       const std::vector<std::shared_ptr<Printer>> &printers = { std::make_shared<StdPrinter>() });
+                       const std::vector<std::shared_ptr<Printer>> &printers = {
+                           std::make_shared<StdPrinter>(),
+                           std::make_shared<AndroidPrinter>(),
+                       });
     /** Remove a logger
      *
      * @param name Logger's name
@@ -74,7 +78,10 @@ public:
      * @param[in] printers  (Optional) Printers to attach to the system loggers. Defaults with a @ref StdPrinter.
      */
     void create_reserved_loggers(LogLevel                                     log_level = LogLevel::INFO,
-                                 const std::vector<std::shared_ptr<Printer>> &printers  = { std::make_shared<StdPrinter>() });
+                                 const std::vector<std::shared_ptr<Printer>> &printers  = {
+                                     std::make_shared<StdPrinter>(),
+                                     std::make_shared<AndroidPrinter>(),
+                                 });
 
 private:
     /** Default constructor */

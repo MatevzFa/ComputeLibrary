@@ -307,7 +307,7 @@ if env['Werror']:
 
 if env['os'] == 'android':
     env.Append(CPPDEFINES = ['ANDROID'])
-    env.Append(LINKFLAGS = ['-pie', '-static-libstdc++', '-ldl'])
+    env.Append(LINKFLAGS = ['-pie', '-static-libstdc++', '-ldl', '-llog'])
 elif env['os'] == 'bare_metal':
     env.Append(LINKFLAGS = ['-static'])
     env.Append(LINKFLAGS = ['-specs=rdimon.specs'])
