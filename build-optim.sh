@@ -27,8 +27,9 @@ export build_dir="build.$ANDROID_ABI-$ANDROID_API_LEVEL.optim"
 
 bear -o "build/$build_dir/compile_commands.json" scons \
     build_dir="$build_dir" \
-    Werror=1 \
+    Werror=0 \
     examples=0 \
+    benchmark_examples=0 validate_examples=0 reference_openmp=0 \
     -j8 \
     debug=0 asserts=0 \
     neon=0 opencl=1 gles_compute=1 \
