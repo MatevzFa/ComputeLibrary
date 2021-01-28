@@ -30,6 +30,8 @@ LIBRARY_VERSION_MINOR =  0
 LIBRARY_VERSION_PATCH =  0
 SONAME_VERSION = str(LIBRARY_VERSION_MAJOR) + "." + str(LIBRARY_VERSION_MINOR) + "." + str(LIBRARY_VERSION_PATCH)
 
+COMPILATIONDB_USE_ABSPATH=True
+
 Import('env')
 Import('vars')
 Import('install_lib')
@@ -124,6 +126,12 @@ def create_version_file(target, source, env):
 arm_compute_env = env.Clone()
 version_file = arm_compute_env.Command("src/core/arm_compute_version.embed", "", action=create_version_file)
 arm_compute_env.AlwaysBuild(version_file)
+
+# Compile commands target
+arm_compute_env.Tool('compilation_db')
+cdb = arm_compute_env.CompilationDatabase()
+arm_compute_env.Alias('cdb', cdb)
+Default(cdb)
 
 # Generate embed files
 generate_embed = [ version_file ]

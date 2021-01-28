@@ -25,7 +25,7 @@ export CXX="$NDK_TOOLCHAIN_BIN/$ANDROID_ARCH-linux-android$ANDROID_API_LEVEL-cla
 
 export build_dir="build.$ANDROID_ABI-$ANDROID_API_LEVEL.optim"
 
-bear -o "build/$build_dir/compile_commands.json" scons \
+scons \
     build_dir="$build_dir" \
     Werror=0 \
     examples=0 \
@@ -34,6 +34,7 @@ bear -o "build/$build_dir/compile_commands.json" scons \
     debug=0 asserts=0 \
     neon=0 opencl=1 gles_compute=1 \
     embed_kernels=1 \
-    os=android arch=$ANDROID_ABI
+    os=android arch=$ANDROID_ABI \
+    "$@"
 
 cp "build/$build_dir/compile_commands.json" .
