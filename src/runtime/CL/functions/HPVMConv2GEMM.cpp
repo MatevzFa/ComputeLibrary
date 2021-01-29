@@ -27,9 +27,10 @@
 
 using namespace arm_compute;
 
-inline bool is_central_element_index(size_t K, size_t index)
+inline bool is_central_element_index(size_t KK, size_t index)
 {
-    return index == (K / 2 * (K + 1));
+    size_t _K = sqrt(KK);
+    return index == (_K / 2 * (_K + 1));
 }
 
 void log_dims(const char *name, ITensorInfo *info)
@@ -101,10 +102,12 @@ void AccumulatingGEMM::configure(const CLCompileContext &compile_context,
     rhs_info.n0 = 2;
     rhs_info.k0 = lhs_info.k0;
 
-    for(size_t i = 0; i < KK * KK; i++)
+    for(size_t i = 0; i < KK; i++)
     {
-        CLSubTensor filters_view(weights, TensorShape(C, M), Coordinates(0, 0, i));
-        auto        used_output = is_central_element_index(KK, i) ? &_output_tensor : &_output_buffer;
+        auto filters_view = support::cpp14::make_unique<CLSubTensor>(weights, TensorShape(C, M, 1), Coordinates(0, 0, i));
+        _subtensors.push_back(std::move(filters_view));
+
+        auto used_output = is_central_element_index(KK, i) ? &_output_tensor : &_output_buffer;
 
         GEMMKernelInfo kernel_info{};
         kernel_info.m        = M;
@@ -114,7 +117,7 @@ void AccumulatingGEMM::configure(const CLCompileContext &compile_context,
         kernel_info.rhs_info = rhs_info;
 
         auto k = arm_compute::support::cpp14::make_unique<CLGEMMMatrixMultiplyNativeKernel>();
-        k->configure(compile_context, &filters_view, input, nullptr, used_output, 1, 1, lhs_info, rhs_info, kernel_info);
+        k->configure(compile_context, _subtensors[i].get(), input, nullptr, used_output, 1, 1, lhs_info, rhs_info, kernel_info);
         _filter_image_gemmkernels.push_back(std::move(k));
     }
 
@@ -143,32 +146,20 @@ void AccumulatingGEMM::run()
 
 void AccumulatingGEMM::run(size_t filter_perforation)
 {
-    _memory_group.acquire();
+    MemoryGroupResourceScope scope_mg(_memory_group);
 
-    for(size_t i = 0; i < KK * KK; i++)
+    for(size_t i = 0; i < KK; i++)
     {
         if(is_central_element_index(KK, i) || filter_perforation == 1 || i % filter_perforation == 0)
         {
             CLScheduler::get().enqueue(*_filter_image_gemmkernels[i]);
+            CLScheduler::get().sync();
 
             // TODO: accumulate results
         }
     }
-
-    _memory_group.release();
 }
 
 void AccumulatingGEMM::prepare()
 {
-    _memory_group.acquire();
-    _reshape_layer.run();
-    _memory_group.release();
-
-    // _filter_tensor.map();
-
-    // std::ostringstream stream;
-    // _filter_tensor.print(stream);
-    // ARM_COMPUTE_LOG_MSG_CORE(logging::LogLevel::INFO, stream.str().c_str());
-
-    // _filter_tensor.unmap();
 }

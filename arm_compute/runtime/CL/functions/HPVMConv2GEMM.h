@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "arm_compute/core/CL/CLCompileContext.h"
+#include "arm_compute/runtime/CL/CLSubTensor.h"
 #include "arm_compute/runtime/CL/CLTensor.h"
 #include "arm_compute/runtime/CL/functions/CLGEMM.h"
 #include "arm_compute/runtime/CL/functions/CLGEMMLowpMatrixMultiplyCore.h"
@@ -74,7 +75,7 @@ class AccumulatingGEMM : public IFunction
     CLTensor _output_tensor;
     CLTensor _output_buffer;
 
-    CLReshapeLayer                                                 _reshape_layer;
+    std::vector<std::unique_ptr<CLSubTensor>>                      _subtensors;
     std::vector<std::unique_ptr<CLGEMMMatrixMultiplyNativeKernel>> _filter_image_gemmkernels;
 
     std::vector<CLTensor> _output_tensors;
