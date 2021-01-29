@@ -1,5 +1,6 @@
 
 #include "arm_compute/runtime/CL/functions/HPVMConv2GEMM.h"
+
 #include "arm_compute/core/CL/CLKernelLibrary.h"
 #include "arm_compute/core/Coordinates.h"
 #include "arm_compute/core/Error.h"
@@ -26,12 +27,6 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "ARMComputeLibrary", __VA_ARGS__)
 
 using namespace arm_compute;
-
-inline bool is_central_element_index(size_t KK, size_t index)
-{
-    size_t _K = sqrt(KK);
-    return index == (_K / 2 * (_K + 1));
-}
 
 void log_dims(const char *name, ITensorInfo *info)
 {
@@ -85,14 +80,13 @@ void AccumulatingGEMM::configure(const CLCompileContext &compile_context,
     log_dims("input", input->info());
     log_dims("weights", weights->info());
 
-    _output_buffer.allocator()->init(create_info(TensorShape(HW, M), DataType::F32));
-    _output_tensor.allocator()->init(create_info(TensorShape(HW, M), DataType::F32));
+    _output_tensor_ptr = output;
+    _output_tensor_aux.allocator()->init(*_output_tensor_ptr->info());
 
-    log_dims("_output_buffer", _output_buffer.info());
-    log_dims("_output_tensor", _output_tensor.info());
+    log_dims("_output_buffer", _output_tensor_aux.info());
+    log_dims("_output_tensor", _output_tensor_ptr->info());
 
-    _memory_group.manage(&_output_buffer);
-    _memory_group.manage(&_output_tensor);
+    _memory_group.manage(&_output_tensor_aux);
 
     GEMMLHSMatrixInfo lhs_info{};
     lhs_info.m0 = 1;
@@ -107,8 +101,6 @@ void AccumulatingGEMM::configure(const CLCompileContext &compile_context,
         auto filters_view = support::cpp14::make_unique<CLSubTensor>(weights, TensorShape(C, M, 1), Coordinates(0, 0, i));
         _subtensors.push_back(std::move(filters_view));
 
-        auto used_output = is_central_element_index(KK, i) ? &_output_tensor : &_output_buffer;
-
         GEMMKernelInfo kernel_info{};
         kernel_info.m        = M;
         kernel_info.k        = C;
@@ -117,12 +109,11 @@ void AccumulatingGEMM::configure(const CLCompileContext &compile_context,
         kernel_info.rhs_info = rhs_info;
 
         auto k = arm_compute::support::cpp14::make_unique<CLGEMMMatrixMultiplyNativeKernel>();
-        k->configure(compile_context, _subtensors[i].get(), input, nullptr, used_output, 1, 1, lhs_info, rhs_info, kernel_info);
+        k->configure(compile_context, _subtensors[i].get(), input, nullptr, used_output_ptr(i), 1, 1, lhs_info, rhs_info, kernel_info);
         _filter_image_gemmkernels.push_back(std::move(k));
     }
 
-    _output_buffer.allocator()->allocate();
-    _output_tensor.allocator()->allocate();
+    _output_tensor_aux.allocator()->allocate();
 }
 
 Status AccumulatingGEMM::validate(const ITensorInfo *input, const ITensorInfo *weights, const ITensorInfo *output,
@@ -136,6 +127,9 @@ Status AccumulatingGEMM::validate(const ITensorInfo *input, const ITensorInfo *w
 
     ARM_COMPUTE_ERROR_ON(c != weights->dimension(0));
 
+    ARM_COMPUTE_ERROR_ON(hw != output->dimension(0));
+    ARM_COMPUTE_ERROR_ON(m != output->dimension(1));
+
     return Status{};
 }
 
@@ -144,13 +138,13 @@ void AccumulatingGEMM::run()
     ARM_COMPUTE_ERROR("AccumulatingGEMM::run() not supported. Use AccumulatingGEMM::run(size_t filter_perforation) instead.");
 }
 
-void AccumulatingGEMM::run(size_t filter_perforation)
+void AccumulatingGEMM::run(size_t skip_every)
 {
     MemoryGroupResourceScope scope_mg(_memory_group);
 
     for(size_t i = 0; i < KK; i++)
     {
-        if(is_central_element_index(KK, i) || filter_perforation == 1 || i % filter_perforation == 0)
+        if(is_central_element_index(i) || skip_every == 0 || (i + 1) % skip_every != 0)
         {
             CLScheduler::get().enqueue(*_filter_image_gemmkernels[i]);
             CLScheduler::get().sync();
@@ -162,4 +156,22 @@ void AccumulatingGEMM::run(size_t filter_perforation)
 
 void AccumulatingGEMM::prepare()
 {
+}
+
+ICLTensor *AccumulatingGEMM::used_output_ptr(size_t i)
+{
+    if(is_central_element_index(i))
+    {
+        return _output_tensor_ptr;
+    }
+    else
+    {
+        return &_output_tensor_aux;
+    }
+}
+
+bool AccumulatingGEMM::is_central_element_index(size_t index)
+{
+    size_t _K = sqrt(KK);
+    return index == (_K / 2 * (_K + 1));
 }

@@ -23,7 +23,7 @@ class ICLTensor;
 
 class AccumulatingGEMM : public IFunction
 {
-    public:
+public:
     /** Constructor
      *
      * @param[in] memory_manager  (Optional) Memory manager.
@@ -63,21 +63,22 @@ class AccumulatingGEMM : public IFunction
     void run() override;
     void prepare() override;
 
-    void run(size_t filter_perforation);
+    void run(size_t skip_every);
 
-    private:
+private:
+    bool is_central_element_index(size_t index);
+
+    ICLTensor *used_output_ptr(size_t i);
+
+private:
     MemoryGroup _memory_group{};
 
     size_t M, C, KK, HW;
 
-    CLTensor _filter_tensor;
-    CLTensor _image_tensor;
-    CLTensor _output_tensor;
-    CLTensor _output_buffer;
+    ICLTensor *_output_tensor_ptr;
+    CLTensor   _output_tensor_aux;
 
     std::vector<std::unique_ptr<CLSubTensor>>                      _subtensors;
     std::vector<std::unique_ptr<CLGEMMMatrixMultiplyNativeKernel>> _filter_image_gemmkernels;
-
-    std::vector<CLTensor> _output_tensors;
 };
 }; // namespace arm_compute
