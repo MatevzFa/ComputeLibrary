@@ -6,6 +6,7 @@
 #include "arm_compute/runtime/CL/CLTensor.h"
 #include "arm_compute/runtime/CL/functions/CLGEMM.h"
 #include "arm_compute/runtime/CL/functions/CLGEMMLowpMatrixMultiplyCore.h"
+#include "arm_compute/runtime/CL/functions/CLReshapeLayer.h"
 #include "arm_compute/runtime/IFunction.h"
 #include "arm_compute/runtime/IMemoryManager.h"
 #include "arm_compute/runtime/IWeightsManager.h"
@@ -44,12 +45,12 @@ class AccumulatingGEMM : public IFunction
     /**Default destructor */
     ~AccumulatingGEMM();
 
-    void configure(const ICLTensor *input, const ICLTensor *weights, ICLTensor *output,
+    void configure(const ICLTensor *input, ICLTensor *weights, ICLTensor *output,
                    const PadStrideInfo &conv_info, const WeightsInfo &weights_info = WeightsInfo(),
                    const Size2D &dilation = Size2D(1U, 1U), const ActivationLayerInfo &act_info = ActivationLayerInfo(), unsigned int num_groups = 1);
 
     void configure(const CLCompileContext &compile_context,
-                   const ICLTensor *input, const ICLTensor *weights, ICLTensor *output,
+                   const ICLTensor *input, ICLTensor *weights, ICLTensor *output,
                    const PadStrideInfo &conv_info, const WeightsInfo &weights_info = WeightsInfo(),
                    const Size2D &dilation = Size2D(1U, 1U), const ActivationLayerInfo &act_info = ActivationLayerInfo(), unsigned int num_groups = 1);
 
@@ -66,13 +67,14 @@ class AccumulatingGEMM : public IFunction
     private:
     MemoryGroup _memory_group{};
 
-    size_t M, C, K, HW;
+    size_t M, C, KK, HW;
 
     CLTensor _filter_tensor;
     CLTensor _image_tensor;
     CLTensor _output_tensor;
     CLTensor _output_buffer;
 
+    CLReshapeLayer                                                 _reshape_layer;
     std::vector<std::unique_ptr<CLGEMMMatrixMultiplyNativeKernel>> _filter_image_gemmkernels;
 
     std::vector<CLTensor> _output_tensors;

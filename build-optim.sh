@@ -31,7 +31,7 @@ scons \
     examples=0 \
     benchmark_examples=0 validate_examples=0 reference_openmp=0 \
     -j8 \
-    debug=0 asserts=0 \
+    debug=0 asserts=1 logging=1 \
     neon=0 opencl=1 gles_compute=1 \
     embed_kernels=1 \
     os=android arch=$ANDROID_ABI \
