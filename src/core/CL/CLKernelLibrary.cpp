@@ -470,10 +470,10 @@ const std::map<std::string, std::string> CLKernelLibrary::_kernel_program_map =
     { "YUYV422_to_NV12_bt709", "color_convert.cl" },
     { "YUYV422_to_RGB888_bt709", "color_convert.cl" },
     { "YUYV422_to_RGBA8888_bt709", "color_convert.cl" },
+    { "hpvm_add_offset", "hpvm_add_offset.cl" },
 };
 
-const std::map<std::string, std::string> CLKernelLibrary::_program_source_map =
-{
+const std::map<std::string, std::string> CLKernelLibrary::_program_source_map = {
 #ifdef EMBEDDED_KERNELS
     {
         "absdiff.cl",
@@ -974,6 +974,10 @@ const std::map<std::string, std::string> CLKernelLibrary::_program_source_map =
     {
         "yolo_layer.cl",
 #include "./cl_kernels/yolo_layer.clembed"
+    },
+    {
+        "hpvm_add_offset.cl",
+#include "./cl_kernels/hpvm_add_offset.clembed"
     },
 #endif /* EMBEDDED_KERNELS */
 };

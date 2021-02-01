@@ -5,6 +5,7 @@
 #include "arm_compute/core/CL/CLCompileContext.h"
 #include "arm_compute/runtime/CL/CLSubTensor.h"
 #include "arm_compute/runtime/CL/CLTensor.h"
+#include "arm_compute/runtime/CL/functions/CLFill.h"
 #include "arm_compute/runtime/CL/functions/CLGEMM.h"
 #include "arm_compute/runtime/CL/functions/CLGEMMLowpMatrixMultiplyCore.h"
 #include "arm_compute/runtime/CL/functions/CLReshapeLayer.h"
@@ -13,6 +14,7 @@
 #include "arm_compute/runtime/IWeightsManager.h"
 #include "arm_compute/runtime/MemoryGroup.h"
 #include "src/core/CL/kernels/CLGEMMMatrixMultiplyNativeKernel.h"
+#include "src/core/CL/kernels/HPVMAccumulateKernel.h"
 
 namespace arm_compute
 {
@@ -47,15 +49,18 @@ public:
     ~AccumulatingGEMM();
 
     void configure(const ICLTensor *input, ICLTensor *weights, ICLTensor *output,
+                   const size_t w, const size_t h,
                    const PadStrideInfo &conv_info, const WeightsInfo &weights_info = WeightsInfo(),
                    const Size2D &dilation = Size2D(1U, 1U), const ActivationLayerInfo &act_info = ActivationLayerInfo(), unsigned int num_groups = 1);
 
     void configure(const CLCompileContext &compile_context,
                    const ICLTensor *input, ICLTensor *weights, ICLTensor *output,
+                   const size_t w, const size_t h,
                    const PadStrideInfo &conv_info, const WeightsInfo &weights_info = WeightsInfo(),
                    const Size2D &dilation = Size2D(1U, 1U), const ActivationLayerInfo &act_info = ActivationLayerInfo(), unsigned int num_groups = 1);
 
     static Status validate(const ITensorInfo *input, const ITensorInfo *weights, const ITensorInfo *output,
+                           const size_t w, const size_t h,
                            const PadStrideInfo &conv_info, const WeightsInfo &weights_info = WeightsInfo(),
                            const Size2D &dilation = Size2D(1U, 1U), const ActivationLayerInfo &act_info = ActivationLayerInfo(), unsigned int num_groups = 1);
 
@@ -66,19 +71,23 @@ public:
     void run(size_t skip_every);
 
 private:
-    bool is_central_element_index(size_t index);
+    bool                      is_central_element_index(size_t index);
+    std::pair<size_t, size_t> get_offset(size_t index);
 
     ICLTensor *used_output_ptr(size_t i);
 
 private:
     MemoryGroup _memory_group{};
 
-    size_t M, C, KK, HW;
+    size_t M, C, KK, W, H;
 
     ICLTensor *_output_tensor_ptr;
     CLTensor   _output_tensor_aux;
 
+    CLFill _fill_func;
+
     std::vector<std::unique_ptr<CLSubTensor>>                      _subtensors;
     std::vector<std::unique_ptr<CLGEMMMatrixMultiplyNativeKernel>> _filter_image_gemmkernels;
+    std::vector<std::unique_ptr<HPVMAccumulateKernel>>             _output_accum_kernels;
 };
 }; // namespace arm_compute
