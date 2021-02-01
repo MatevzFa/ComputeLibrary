@@ -1,5 +1,5 @@
 
-#include "arm_compute/runtime/CL/functions/HPVMConv2GEMM.h"
+#include "arm_compute/runtime/CL/functions/HPVMAccumulatingGEMM.h"
 
 #include "arm_compute/core/CL/CLKernelLibrary.h"
 #include "arm_compute/core/Coordinates.h"
