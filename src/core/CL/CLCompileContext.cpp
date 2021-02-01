@@ -99,6 +99,9 @@ Program::operator cl::Program() const
     }
 }
 
+#include "android/log.h"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "ARMComputeLibrary", __VA_ARGS__)
+
 bool Program::build(const cl::Program &program, const std::string &build_options)
 {
     try
@@ -113,6 +116,7 @@ bool Program::build(const cl::Program &program, const std::string &build_options
         for(auto &pair : build_info)
         {
             std::cerr << pair.second << std::endl;
+            LOGI("%s", pair.second.c_str());
         }
 
         return false;
