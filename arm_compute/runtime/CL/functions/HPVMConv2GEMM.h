@@ -72,9 +72,6 @@ public:
 
 private:
     bool                      is_central_element_index(size_t index);
-    std::pair<size_t, size_t> get_offset(size_t index);
-
-    ICLTensor *used_output_ptr(size_t i);
 
 private:
     MemoryGroup _memory_group{};

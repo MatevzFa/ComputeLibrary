@@ -30,7 +30,7 @@ __kernel void hpvm_add_offset(
     ulong idx_w_alt = idx_w + offset_w;
     ulong idx_src   = (idx_m * hw) + idx_h_alt * w + idx_w_alt;
 
-    if(idx_h_alt < h && idx_w_alt < w)
+    if(idx_h_alt < h && idx_w_alt < w && idx_dst < hw * m && idx_src < hw * m)
     {
         INDEX(accum_ptr, idx_dst) += INDEX(input_ptr, idx_src);
     }

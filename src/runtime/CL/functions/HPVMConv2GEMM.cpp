@@ -24,6 +24,7 @@
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 
@@ -49,6 +50,30 @@ std::string tensor_to_string(ICLTensor *tensor)
     tensor->unmap(CLScheduler::get().queue());
 
     return stream.str();
+}
+
+size_t central_index(size_t k)
+{
+    return k / 2 * (k + 1);
+}
+
+std::pair<size_t, size_t> kernel_coords(size_t k, size_t kernel_index)
+{
+    int row = kernel_index / k;
+    int col = kernel_index % k;
+
+    return std::make_pair(row, col);
+}
+
+std::pair<long, long> kernel_offset(std::pair<size_t, size_t> central_coords, std::pair<size_t, size_t> coords)
+{
+    long i_row, i_col;
+    std::tie(i_row, i_col) = coords;
+
+    long c_row, c_col;
+    std::tie(c_row, c_col) = central_coords;
+
+    return std::make_pair(i_row - c_row, i_col - c_col);
 }
 
 TensorInfo create_info(TensorShape shape, DataType data_type)
@@ -117,6 +142,9 @@ void AccumulatingGEMM::configure(const CLCompileContext &compile_context,
     rhs_info.n0 = 2;
     rhs_info.k0 = lhs_info.k0;
 
+    int  _k             = sqrt(KK);
+    auto central_coords = kernel_coords(_k, central_index(_k));
+
     for(size_t i = 0; i < KK; i++)
     {
         auto filters_view = support::cpp14::make_unique<CLSubTensor>(weights, TensorShape(C, M, 1), Coordinates(0, 0, i));
@@ -133,8 +161,8 @@ void AccumulatingGEMM::configure(const CLCompileContext &compile_context,
         k->configure(compile_context, _subtensors[i].get(), input, nullptr, &_output_tensor_aux, 1, 1, lhs_info, rhs_info, kernel_info);
         _filter_image_gemmkernels.push_back(std::move(k));
 
-        size_t offset_w, offset_h;
-        std::tie(offset_w, offset_h) = get_offset(i);
+        long offset_w, offset_h;
+        std::tie(offset_w, offset_h) = kernel_offset(central_coords, kernel_coords(_k, i));
 
         auto k_accum = support::cpp14::make_unique<HPVMAccumulateKernel>();
         k_accum->configure(compile_context, _output_tensor_ptr, &_output_tensor_aux, W, H, M, offset_w, offset_h);
@@ -178,16 +206,16 @@ void AccumulatingGEMM::run(size_t skip_every)
         if(skip_every == 0 || (i + 1) % skip_every != 0)
         {
             CLScheduler::get().enqueue(*_filter_image_gemmkernels[i]);
-            CLScheduler::get().sync();
+            // CLScheduler::get().sync();
 
             CLScheduler::get().enqueue(*_output_accum_kernels[i]);
-            CLScheduler::get().sync();
+            // CLScheduler::get().sync();
 
-            LOGI(
-                "at %ld\n"
-                "_output_tensor_aux: %s\n"
-                "_output_tensor_ptr:  %s",
-                i, tensor_to_string(&_output_tensor_aux).c_str(), tensor_to_string(_output_tensor_ptr).c_str());
+            // LOGI(
+            //     "at %ld\n"
+            //     "_output_tensor_aux: %s\n"
+            //     "_output_tensor_ptr:  %s",
+            //     i, tensor_to_string(&_output_tensor_aux).c_str(), tensor_to_string(_output_tensor_ptr).c_str());
         }
     }
 }
@@ -198,47 +226,8 @@ void AccumulatingGEMM::prepare()
     CLScheduler::get().sync();
 }
 
-ICLTensor *AccumulatingGEMM::used_output_ptr(size_t i)
-{
-    if(is_central_element_index(i))
-    {
-        return _output_tensor_ptr;
-    }
-    else
-    {
-        return &_output_tensor_aux;
-    }
-}
-
 bool AccumulatingGEMM::is_central_element_index(size_t index)
 {
     size_t _K = sqrt(KK);
-    return index == (_K / 2 * (_K + 1));
-}
-
-std::pair<size_t, size_t> AccumulatingGEMM::get_offset(size_t kernel_index)
-{
-    switch(kernel_index)
-    {
-        case 0:
-            return std::make_pair(-1, -1);
-        case 1:
-            return std::make_pair(-1, 0);
-        case 2:
-            return std::make_pair(-1, 1);
-        case 3:
-            return std::make_pair(0, -1);
-        case 4:
-            return std::make_pair(0, 0);
-        case 5:
-            return std::make_pair(0, 1);
-        case 6:
-            return std::make_pair(1, -1);
-        case 7:
-            return std::make_pair(1, 0);
-        case 8:
-            return std::make_pair(1, 1);
-        default:
-            throw std::runtime_error("AccumulatingGEMM::get_offset: nah");
-    }
+    return index == central_index(_K);
 }
