@@ -23,6 +23,7 @@
  */
 #include "src/core/CL/kernels/HPVMAccumulateKernel.h"
 
+#include "CL/cl2.hpp"
 #include "arm_compute/core/CL/CLHelpers.h"
 #include "arm_compute/core/CL/CLKernelLibrary.h"
 #include "arm_compute/core/CL/ICLTensor.h"
@@ -73,6 +74,8 @@ void HPVMAccumulateKernel::configure(const CLCompileContext &compile_context, IC
 
     // Make sure _kernel is initialized before calling the parent's configure
     ICLSimple2DKernel::configure(input, accum, num_elems_processed_per_iteration);
+
+    set_lws_hint(cl::NDRange(64u, 1));
 }
 
 } // namespace arm_compute
