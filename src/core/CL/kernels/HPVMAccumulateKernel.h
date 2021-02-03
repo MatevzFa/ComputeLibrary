@@ -39,7 +39,7 @@ class ICLTensor;
  * Accumulation is computed by:
  * @f[ accum(x,y) = accum(x,y) + input(x+offset_x,y+offset_y) @f]
  */
-class HPVMAccumulateKernel : public ICLSimple2DKernel
+class HPVMAccumulateKernel : public ICLKernel
 {
 public:
     /** Set the input and accumulation tensors.
@@ -49,7 +49,7 @@ public:
      */
     void configure(ICLTensor *accum, const ICLTensor *input,
                    const size_t w, const size_t h, const size_t m,
-                   const size_t offset_w, const size_t offset_h);
+                   const long offset_w, const long offset_h);
     /** Set the input and accumulation tensors.
      *
      * @param[in]  compile_context The compile context to be used.
@@ -59,7 +59,14 @@ public:
     void configure(const CLCompileContext &compile_context,
                    ICLTensor *accum, const ICLTensor *input,
                    const size_t w, const size_t h, const size_t m,
-                   const size_t offset_w, const size_t offset_h);
+                   const long offset_w, const long offset_h);
+
+    void run(const Window &window, cl::CommandQueue &queue) override;
+    void run_op(ITensorPack &tensors, const Window &window, cl::CommandQueue &queue) override;
+
+private:
+    ICLTensor *      _accum;
+    const ICLTensor *_input;
 };
 } // namespace arm_compute
 #endif /*ARM_COMPUTE_CLACCUMULATEKERNEL_H */

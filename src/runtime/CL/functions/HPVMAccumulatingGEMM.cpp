@@ -150,16 +150,11 @@ void AccumulatingGEMM::configure(const CLCompileContext &compile_context,
         auto filters_view = support::cpp14::make_unique<CLSubTensor>(weights, TensorShape(C, M, 1), Coordinates(0, 0, i));
         _subtensors.push_back(std::move(filters_view));
 
-        GEMMKernelInfo kernel_info{};
-        kernel_info.m        = M;
-        kernel_info.k        = C;
-        kernel_info.n        = H * W;
-        kernel_info.lhs_info = lhs_info;
-        kernel_info.rhs_info = rhs_info;
+        GEMMInfo gemm_info{};
 
-        auto k = arm_compute::support::cpp14::make_unique<CLGEMMMatrixMultiplyNativeKernel>();
-        k->configure(compile_context, _subtensors[i].get(), input, nullptr, &_output_tensor_aux, 1, 1, lhs_info, rhs_info, kernel_info);
-        _filter_image_gemmkernels.push_back(std::move(k));
+        auto gemm = support::cpp14::make_unique<CLGEMM>();
+        gemm->configure(compile_context, _subtensors[i].get(), input, nullptr, &_output_tensor_aux, 1, 0, gemm_info);
+        _filter_image_mm.push_back(std::move(gemm));
 
         long offset_w, offset_h;
         std::tie(offset_w, offset_h) = kernel_offset(central_coords, kernel_coords(_k, i));
@@ -205,7 +200,7 @@ void AccumulatingGEMM::run(size_t skip_every)
     {
         if(skip_every == 0 || (i + 1) % skip_every != 0)
         {
-            CLScheduler::get().enqueue(*_filter_image_gemmkernels[i]);
+            _filter_image_mm[i]->run();
             // CLScheduler::get().sync();
 
             CLScheduler::get().enqueue(*_output_accum_kernels[i]);

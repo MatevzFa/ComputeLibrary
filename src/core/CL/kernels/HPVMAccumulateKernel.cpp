@@ -31,32 +31,34 @@
 #include "arm_compute/core/Coordinates.h"
 #include "arm_compute/core/Error.h"
 #include "arm_compute/core/IAccessWindow.h"
+#include "arm_compute/core/ITensorPack.h"
 #include "arm_compute/core/Types.h"
+#include "arm_compute/core/Utils.h"
 #include "arm_compute/core/Validate.h"
 #include "arm_compute/core/Window.h"
 #include "src/core/CL/ICLKernel.h"
 #include "src/core/CL/ICLSimpleKernel.h"
 #include "src/core/helpers/WindowHelpers.h"
+#include "support/Cast.h"
+#include <sstream>
 #include <string>
 
 namespace arm_compute
 {
-namespace
-{
-constexpr unsigned int num_elems_processed_per_iteration = 1;
-} // namespace
-
 void HPVMAccumulateKernel::configure(ICLTensor *accum, const ICLTensor *input,
                                      const size_t w, const size_t h, const size_t m,
-                                     const size_t offset_w, const size_t offset_h)
+                                     const long offset_w, const long offset_h)
 {
     configure(CLKernelLibrary::get().get_compile_context(), accum, input, w, h, m, offset_w, offset_h);
 }
 
 void HPVMAccumulateKernel::configure(const CLCompileContext &compile_context, ICLTensor *accum, const ICLTensor *input,
                                      const size_t w, const size_t h, const size_t m,
-                                     const size_t offset_w, const size_t offset_h)
+                                     const long offset_w, const long offset_h)
 {
+    _accum = accum;
+    _input = input;
+
     const std::set<std::string> build_opts{
         "-DDATA_TYPE=" + get_cl_type_from_data_type(accum->info()->data_type())
     };
@@ -72,10 +74,37 @@ void HPVMAccumulateKernel::configure(const CLCompileContext &compile_context, IC
     _kernel.setArg(idx++, offset_w);
     _kernel.setArg(idx++, offset_h);
 
-    // Make sure _kernel is initialized before calling the parent's configure
-    ICLSimple2DKernel::configure(input, accum, num_elems_processed_per_iteration);
+    Window win = calculate_max_window(*accum->info());
 
-    set_lws_hint(cl::NDRange(64u, 1));
+    ICLKernel::configure_internal(win, cl::NDRange(16u, 1u));
+
+    std::ostringstream config_id_str;
+    config_id_str << "hpvm_add_offset_" << string_from_data_type(accum->info()->data_type()) << "_"
+                  << w << "_" << h << "_" << m << "_"
+                  << offset_w << "_" << offset_h;
+
+    _config_id += config_id_str.str();
 }
 
+void HPVMAccumulateKernel::run(const Window &window, cl::CommandQueue &queue)
+{
+    ITensorPack pack{};
+    pack.add_tensor(TensorType::ACL_SRC, _input);
+    pack.add_tensor(TensorType::ACL_DST, _accum);
+    run_op(pack, window, queue);
+}
+
+void HPVMAccumulateKernel::run_op(ITensorPack &tensors, const Window &window, cl::CommandQueue &queue)
+{
+    Window slice = window.first_slice_window_2D();
+
+    const auto input = utils::cast::polymorphic_downcast<const ICLTensor *>(tensors.get_const_tensor(TensorType::ACL_SRC));
+    auto       accum = utils::cast::polymorphic_downcast<ICLTensor *>(tensors.get_tensor(TensorType::ACL_DST));
+
+    // Set inputs
+    unsigned int idx = 0;
+    add_2D_tensor_argument(idx, input, slice);
+    add_2D_tensor_argument(idx, accum, slice);
+    enqueue(queue, *this, slice, lws_hint());
+}
 } // namespace arm_compute

@@ -71,7 +71,7 @@ public:
     void run(size_t skip_every);
 
 private:
-    bool                      is_central_element_index(size_t index);
+    bool is_central_element_index(size_t index);
 
 private:
     MemoryGroup _memory_group{};
@@ -83,8 +83,8 @@ private:
 
     CLFill _fill_func;
 
-    std::vector<std::unique_ptr<CLSubTensor>>                      _subtensors;
-    std::vector<std::unique_ptr<CLGEMMMatrixMultiplyNativeKernel>> _filter_image_gemmkernels;
-    std::vector<std::unique_ptr<HPVMAccumulateKernel>>             _output_accum_kernels;
+    std::vector<std::unique_ptr<CLSubTensor>>          _subtensors{};
+    std::vector<std::unique_ptr<CLGEMM>>               _filter_image_mm{};
+    std::vector<std::unique_ptr<HPVMAccumulateKernel>> _output_accum_kernels{};
 };
 }; // namespace arm_compute
