@@ -471,6 +471,7 @@ const std::map<std::string, std::string> CLKernelLibrary::_kernel_program_map =
     { "YUYV422_to_RGB888_bt709", "color_convert.cl" },
     { "YUYV422_to_RGBA8888_bt709", "color_convert.cl" },
     { "hpvm_add_offset", "hpvm_add_offset.cl" },
+    { "hpvm_im2col_perfrow_generic_nchw", "hpvm_im2col_perfrow.cl" },
 };
 
 const std::map<std::string, std::string> CLKernelLibrary::_program_source_map = {
@@ -978,6 +979,10 @@ const std::map<std::string, std::string> CLKernelLibrary::_program_source_map = 
     {
         "hpvm_add_offset.cl",
 #include "./cl_kernels/hpvm_add_offset.clembed"
+    },
+    {
+        "hpvm_im2col_perfrow.cl",
+#include "./cl_kernels/hpvm_im2col_perfrow.clembed"
     },
 #endif /* EMBEDDED_KERNELS */
 };
