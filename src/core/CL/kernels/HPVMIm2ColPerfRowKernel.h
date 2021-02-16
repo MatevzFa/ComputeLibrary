@@ -56,6 +56,9 @@ class ICLTensor;
 class HPVMIm2ColPerfRowKernel : public ICLKernel
 {
 public:
+    static const size_t perfrow_start = 0;
+    static const size_t perfrow_every = 2;
+
     /** Default constructor */
     HPVMIm2ColPerfRowKernel();
     /** Prevent instances of this class from being copied (As this class contains pointers) */

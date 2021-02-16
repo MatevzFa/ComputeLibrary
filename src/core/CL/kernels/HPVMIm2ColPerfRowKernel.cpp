@@ -23,10 +23,12 @@
  */
 #include "src/core/CL/kernels/HPVMIm2ColPerfRowKernel.h"
 
+#include "CL/cl_platform.h"
 #include "arm_compute/core/CL/CLHelpers.h"
 #include "arm_compute/core/CL/CLKernelLibrary.h"
 #include "arm_compute/core/CL/ICLTensor.h"
 #include "arm_compute/core/CL/OpenCL.h"
+#include "arm_compute/core/Error.h"
 #include "arm_compute/core/Helpers.h"
 #include "arm_compute/core/TensorInfo.h"
 #include "arm_compute/core/Validate.h"
@@ -41,12 +43,48 @@
 #include <tuple>
 #include <utility>
 
+#include <android/log.h>
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "ARMComputeLibrary", __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "ARMComputeLibrary", __VA_ARGS__)
+
 namespace arm_compute
 {
 using namespace misc::shape_calculator;
 
 namespace
 {
+inline TensorShape compute_hpvm_im2col_perfrow_conv_shape(const ITensorInfo *input, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias, const Size2D &dilation, bool batch_size_on_z,
+                                                          unsigned int num_groups = 1)
+{
+    // The output shape will be the 3D shape [ out_channels * kernel_area, num_elems_per_out_channel, batches ]                           if batch_size_on_z == true
+    //                       or the 4D shape [ out_channels * kernel_area / num_groups, num_elems_per_out_channel, num_groups, batches ]  if batch_size_on_z == false
+
+    ARM_COMPUTE_ERROR_ON(num_groups == 0);
+    ARM_COMPUTE_ERROR_ON(num_groups > 1 && input->data_layout() != DataLayout::NCHW);
+    ARM_COMPUTE_ERROR_ON(num_groups > 1 && batch_size_on_z);
+
+    TensorShape output_shape{ input->tensor_shape() };
+
+    const DataLayout data_layout = input->data_layout();
+    const int        width_idx   = get_data_layout_dimension_index(data_layout, DataLayoutDimension::WIDTH);
+    const int        height_idx  = get_data_layout_dimension_index(data_layout, DataLayoutDimension::HEIGHT);
+    const int        channel_idx = get_data_layout_dimension_index(data_layout, DataLayoutDimension::CHANNEL);
+
+    std::pair<unsigned int, unsigned int> out_dims = scaled_dimensions(output_shape[width_idx], output_shape[height_idx], kernel_dims.width, kernel_dims.height, conv_info, dilation);
+    output_shape.set(0, (output_shape[channel_idx] / num_groups * kernel_dims.area() + (has_bias ? 1 : 0))); // NOLINT
+    output_shape.set(1, (out_dims.first * (out_dims.second / HPVMIm2ColPerfRowKernel::perfrow_every)));
+    if(batch_size_on_z && output_shape.num_dimensions() >= 3)
+    {
+        output_shape.remove_dimension(2);
+    }
+    else
+    {
+        output_shape.set(2, num_groups);
+    }
+
+    return output_shape;
+}
+
 struct Im2ColConfiguration
 {
     std::string           kernel_name{};
@@ -79,7 +117,17 @@ Status validate_arguments(const ITensorInfo *input, const ITensorInfo *output, c
 
     if(output->total_size() > 0)
     {
-        const TensorInfo tensor_info_output = output->clone()->set_tensor_shape(compute_im2col_conv_shape(input, kernel_dims, conv_info, has_bias, dilation, num_groups == 1, num_groups));
+        const TensorInfo tensor_info_output = output->clone()->set_tensor_shape(compute_hpvm_im2col_perfrow_conv_shape(input, kernel_dims, conv_info, has_bias, dilation, num_groups == 1, num_groups));
+        LOGE("expected %ld %ld %ld %ld",
+             tensor_info_output.tensor_shape()[0],
+             tensor_info_output.tensor_shape()[1],
+             tensor_info_output.tensor_shape()[2],
+             tensor_info_output.tensor_shape()[3]);
+        LOGE("got %ld %ld %ld %ld",
+             output->tensor_shape()[0],
+             output->tensor_shape()[1],
+             output->tensor_shape()[2],
+             output->tensor_shape()[3]);
         ARM_COMPUTE_RETURN_ERROR_ON_MISMATCHING_SHAPES(output, &tensor_info_output);
         ARM_COMPUTE_RETURN_ERROR_ON_MISMATCHING_DATA_TYPES(input, output);
         ARM_COMPUTE_RETURN_ERROR_ON_MISMATCHING_QUANTIZATION_INFO(input, output);
@@ -169,7 +217,7 @@ Im2ColConfiguration configure_opencl_kernel(const ITensorInfo *input, const Size
     const std::pair<unsigned int, unsigned int> convolved_dims = scaled_dimensions(input_width, input_height, kernel_dims.width, kernel_dims.height, conv_info, dilation);
 
     // Im2Col configuration
-    std::string                   kernel_name = "im2col_generic_";
+    std::string                   kernel_name = "hpvm_im2col_perfrow_generic_nchw";
     CLBuildOptions                build_opts;
     unsigned int                  num_elems_processed_per_iteration = 1;
     bool                          is_padding_required_nchw          = false;
@@ -196,98 +244,10 @@ Im2ColConfiguration configure_opencl_kernel(const ITensorInfo *input, const Size
     build_opts.add_option_if_else(is_data_type_quantized(data_type), "-DPAD_VALUE=" + support::cpp11::to_string(qinfo.offset), "-DPAD_VALUE=0");
     build_opts.add_option_if(has_bias, "-DHAS_BIAS");
 
-    if(data_layout == DataLayout::NHWC)
+    if(data_layout != DataLayout::NCHW)
     {
-        num_elems_processed_per_iteration = std::min(2U, input_channel);
-        is_padding_required_nchw          = false;
-
-        // Only the 3x3 and 9x9 cases are optimized for NHWC
-        if(kernel_dims == Size2D(3U, 3U))
-        {
-            kernel_name = "im2col3x3_";
-        }
-        else if(kernel_dims == Size2D(9U, 9U))
-        {
-            kernel_name = "im2col9x9_";
-        }
-
-        // Get boundary vector (the first/last vector with potentially a partial vector size) size
-        // If input_channel is a multiple of num_elems_processed_per_iteration, the boundary vec size is the (full) vector size
-        // otherwise, the boundary vec size is the (partial) remainder vector size
-        const unsigned int vec_size          = num_elems_processed_per_iteration;
-        const unsigned int partial_vec_size  = input_channel % vec_size;
-        const unsigned int boundary_vec_size = vec_size - ((vec_size - partial_vec_size) % vec_size);
-        build_opts.add_option("-DVECTOR_SIZE=" + support::cpp11::to_string(vec_size));
-        build_opts.add_option("-DBOUNDARY_VECTOR_SIZE=" + support::cpp11::to_string(boundary_vec_size));
+        ARM_COMPUTE_ERROR("HPVMIm2ColPerfRowKernel: Unsupported configuration");
     }
-    else
-    {
-        if(dilation == Size2D(1U, 1U))
-        {
-            const bool squared_im2col = kernel_dims.width == kernel_dims.height;
-            if(squared_im2col)
-            {
-                // Check if we can run an optimized im2col for NCHW
-                switch(kernel_dims.width)
-                {
-                    case 1:
-                        // Optimized im2col1x1 if stride_x = 1 and conv_info.has_padding() = false
-                        if(conv_info.stride().first == 1 && !conv_info.has_padding())
-                        {
-                            kernel_name                       = "im2col1x1_stridex1_";
-                            num_elems_processed_per_iteration = 4;
-                            is_padding_required_nchw          = true;
-                        }
-                        break;
-                    case 3:
-                        kernel_name                       = "im2col3x3_";
-                        num_elems_processed_per_iteration = 1;
-                        is_padding_required_nchw          = true;
-                        break;
-                    case 5:
-                        kernel_name                       = "im2col5x5_";
-                        num_elems_processed_per_iteration = 1;
-                        is_padding_required_nchw          = true;
-                        break;
-                    case 11:
-                        // Optimized im2col11x11 if pad_x = pad_y = 0
-                        if(!conv_info.has_padding())
-                        {
-                            kernel_name                       = "im2col11x11_padx0_pady0_";
-                            num_elems_processed_per_iteration = 1;
-                            is_padding_required_nchw          = true;
-                        }
-                        break;
-                    default:
-                        kernel_name                       = "im2col_generic_";
-                        num_elems_processed_per_iteration = 1;
-                        is_padding_required_nchw          = false;
-                        break;
-                }
-            }
-            else if(kernel_dims.width > 1 && !conv_info.has_padding())
-            {
-                kernel_name                       = "im2col_generic_padx0_pady0_";
-                num_elems_processed_per_iteration = 1;
-                is_padding_required_nchw          = false;
-
-                // Optimized im2col is performed using one or more vector operations with the specified vector size
-                // and a remainder. For example, for 5x5 convolutions, im2col is performed using vectors of size 4
-                // and scalars; for 7x7 convolutions, using vectors of size 4 and vectors of size 3.
-                // Using the vector size of 4 is always safe since OpenCL supports vectors of size 2 and 3.
-                // Using the vector size of 8, however, may be faster.
-                // For 2x2 convolutions, use vectors of size 2. (For 3x3 convolutions, im2col_kernel3x3_padx0_pady0
-                // is used instead.)
-                const size_t vector_size           = std::min(static_cast<size_t>(4), kernel_dims.width);
-                const size_t width_mod_vector_size = kernel_dims.width % vector_size;
-                build_opts.add_option("-DVECTOR_SIZE=" + support::cpp11::to_string(vector_size));
-                build_opts.add_option("-DWIDTH_MOD_VECTOR_SIZE=" + support::cpp11::to_string(width_mod_vector_size));
-            }
-        }
-    }
-
-    // Append the data layout to the kernel_name
-    kernel_name += lower_string(string_from_data_layout(data_layout));
 
     Im2ColConfiguration im2col_config;
     im2col_config.kernel_name                       = kernel_name;
@@ -305,14 +265,14 @@ HPVMIm2ColPerfRowKernel::HPVMIm2ColPerfRowKernel()
 }
 
 void HPVMIm2ColPerfRowKernel::configure(const ICLTensor *input, ICLTensor *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias, const Size2D &dilation,
-                               unsigned int num_groups)
+                                        unsigned int num_groups)
 {
     configure(CLKernelLibrary::get().get_compile_context(), input, output, kernel_dims, conv_info, has_bias, dilation, num_groups);
 }
 
 void HPVMIm2ColPerfRowKernel::configure(const CLCompileContext &compile_context, const ICLTensor *input, ICLTensor *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias,
-                               const Size2D &dilation,
-                               unsigned int  num_groups)
+                                        const Size2D &dilation,
+                                        unsigned int  num_groups)
 {
     ARM_COMPUTE_ERROR_ON_NULLPTR(input, output);
     ARM_COMPUTE_ERROR_THROW_ON(validate_arguments(input->info(), output->info(), kernel_dims, conv_info, has_bias, dilation, num_groups));
@@ -364,13 +324,13 @@ void HPVMIm2ColPerfRowKernel::configure(const CLCompileContext &compile_context,
 }
 
 Status HPVMIm2ColPerfRowKernel::validate(const ITensorInfo *input, const ITensorInfo *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias, const Size2D &dilation,
-                                unsigned int num_groups)
+                                         unsigned int num_groups)
 {
     ARM_COMPUTE_RETURN_ON_ERROR(validate_arguments(input, output, kernel_dims, conv_info, has_bias, dilation, num_groups));
     Im2ColConfiguration im2col_config = configure_opencl_kernel(input, kernel_dims, conv_info, has_bias, dilation, num_groups);
     ARM_COMPUTE_RETURN_ON_ERROR(validate_and_configure_window(input->clone().get(), output->clone().get(), kernel_dims, conv_info, has_bias, dilation, im2col_config.num_elems_processed_per_iteration,
                                                               im2col_config.is_padding_required_nchw, num_groups)
-                                .first);
+                                    .first);
     return Status{};
 }
 
@@ -422,6 +382,8 @@ void HPVMIm2ColPerfRowKernel::run(const Window &window, cl::CommandQueue &queue)
     unsigned int idx = num_arguments_per_3D_tensor() + (_num_groups == 1 ? num_arguments_per_2D_tensor() : num_arguments_per_3D_tensor());
     _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(_input->info()->strides_in_bytes()[3]));
     _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(_output->info()->strides_in_bytes()[((_num_groups == 1) ? 2 : 3)]));
+    _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(perfrow_start));
+    _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(perfrow_every));
     do
     {
         unsigned int idx = 0;
@@ -435,7 +397,6 @@ void HPVMIm2ColPerfRowKernel::run(const Window &window, cl::CommandQueue &queue)
             add_3D_tensor_argument(idx, _output, slice_out);
         }
         enqueue(queue, *this, slice, lws_hint());
-    }
-    while(window_collapsed.slide_window_slice_3D(slice) && window_output.slide_window_slice_2D(slice_out) && window_collapsed.slide_window_slice_3D(slice_in));
+    } while(window_collapsed.slide_window_slice_3D(slice) && window_output.slide_window_slice_2D(slice_out) && window_collapsed.slide_window_slice_3D(slice_in));
 }
 } // namespace arm_compute

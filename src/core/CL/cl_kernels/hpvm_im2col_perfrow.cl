@@ -69,7 +69,7 @@
  * @param[in]  src_stride_w                      Stride of the source tensor in W dimension (in bytes).
  * @param[in]  dst_stride_w                      Stride of the destination tensor in W dimension (in bytes).
  */
-__kernel void im2col_generic_nchw(
+__kernel void hpvm_im2col_perfrow_generic_nchw(
     TENSOR3D_DECLARATION(src),
 #if defined(NUM_GROUPS)
     TENSOR3D_DECLARATION(dst),
@@ -77,7 +77,9 @@ __kernel void im2col_generic_nchw(
     IMAGE_DECLARATION(dst),
 #endif // defined(NUM_GROUPS)
     uint src_stride_w,
-    uint dst_stride_w)
+    uint dst_stride_w,
+    uint perfrow_start,
+    uint perfrow_every)
 {
     const int xc    = get_global_id(0);             // x coordinate in the convolved tensor
     const int yc    = get_global_id(1);             // y coordinate in the convolved tensor
@@ -86,7 +88,7 @@ __kernel void im2col_generic_nchw(
 
     // Calculate input indices
     const int xi = xc * STRIDE_X - PAD_LEFT;
-    const int yi = yc * STRIDE_Y - PAD_TOP;
+    const int yi = yc * perfrow_every * STRIDE_Y - PAD_TOP;
 
     // Calculate output indices
 #if defined(NUM_GROUPS)
