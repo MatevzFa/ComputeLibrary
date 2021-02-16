@@ -1,3 +1,6 @@
+#ifndef ARM_COMPUTE_HPVM_ACCUMULATINGGEMM_H
+#define ARM_COMPUTE_HPVM_ACCUMULATINGGEMM_H
+
 #include <cstddef>
 #include <memory>
 #include <vector>
@@ -88,3 +91,5 @@ private:
     std::vector<std::unique_ptr<HPVMAccumulateKernel>> _output_accum_kernels{};
 };
 }; // namespace arm_compute
+
+#endif
