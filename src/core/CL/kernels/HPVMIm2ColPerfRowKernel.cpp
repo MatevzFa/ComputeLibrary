@@ -72,7 +72,7 @@ inline TensorShape compute_hpvm_im2col_perfrow_conv_shape(const ITensorInfo *inp
 
     std::pair<unsigned int, unsigned int> out_dims = scaled_dimensions(output_shape[width_idx], output_shape[height_idx], kernel_dims.width, kernel_dims.height, conv_info, dilation);
     // Skip every -th filter element
-    output_shape.set(0, (output_shape[channel_idx] / num_groups * kernel_dims.area() + (has_bias ? 1 : 0) - (kernel_dims.area() / HPVMIm2ColPerfRowKernel::perffilter_every))); // NOLINT
+    output_shape.set(0, (output_shape[channel_idx] / num_groups * (kernel_dims.area() - (kernel_dims.area() / HPVMIm2ColPerfRowKernel::perffilter_every)) + (has_bias ? 1 : 0))); // NOLINT
     // Skip every row
     output_shape.set(1, (out_dims.first * (out_dims.second / HPVMIm2ColPerfRowKernel::perfrow_every)));
     if(batch_size_on_z && output_shape.num_dimensions() >= 3)

@@ -103,9 +103,9 @@ __kernel void hpvm_im2col_perfrow_generic_nchw(
 
     __global uchar *input_ptr = src_ptr + src_offset_first_element_in_bytes + ch * src_stride_z + batch * src_stride_w;
 #if defined(NUM_GROUPS)
-    __global DATA_TYPE *output_ptr = ((__global DATA_TYPE *)(dst_ptr + dst_offset_first_element_in_bytes + yo * dst_stride_y + zo * dst_stride_z + batch * dst_stride_w)) + xo;
+    __global DATA_TYPE *output_ptr = ((__global DATA_TYPE *)(dst_ptr + dst_offset_first_element_in_bytes + yo * dst_stride_y + zo * dst_stride_z + batch * dst_stride_w)) + xo - ch * (KERNEL_HEIGHT * KERNEL_WIDTH / perffilter_every);
 #else  // defined(NUM_GROUPS)
-    __global DATA_TYPE *output_ptr = ((__global DATA_TYPE *)(dst_ptr + dst_offset_first_element_in_bytes + yo * dst_stride_y + batch * dst_stride_w)) + xo;
+    __global DATA_TYPE *output_ptr = ((__global DATA_TYPE *)(dst_ptr + dst_offset_first_element_in_bytes + yo * dst_stride_y + batch * dst_stride_w)) + xo - ch * (KERNEL_HEIGHT * KERNEL_WIDTH / perffilter_every);
 #endif // defined(NUM_GROUPS)
 
     // Linearize convolution elements
