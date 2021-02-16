@@ -28,7 +28,7 @@
 #include "arm_compute/graph/backends/FunctionHelpers.h"
 #include "arm_compute/runtime/CL/CLFunctions.h"
 #include "arm_compute/runtime/CPP/CPPFunctions.h"
-#include "src/core/CL/CLKernels.h"
+#include "arm_compute/core/CL/CLKernels.h"
 #include "support/Cast.h"
 
 using namespace arm_compute::utils::cast;
