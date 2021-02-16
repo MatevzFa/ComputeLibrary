@@ -56,8 +56,11 @@ class ICLTensor;
 class HPVMIm2ColPerfRowKernel : public ICLKernel
 {
 public:
-    static const size_t perfrow_start = 0;
-    static const size_t perfrow_every = 2;
+    static const size_t pefrow_start  = 0; //
+    static const size_t perfrow_every = 2; // Skip every second row
+
+    static const size_t perffilter_start = 0; //
+    static const size_t perffilter_every = 5; // Skip central element
 
     /** Default constructor */
     HPVMIm2ColPerfRowKernel();

@@ -79,7 +79,9 @@ __kernel void hpvm_im2col_perfrow_generic_nchw(
     uint src_stride_w,
     uint dst_stride_w,
     uint perfrow_start,
-    uint perfrow_every)
+    uint perfrow_every,
+    uint perffilter_start,
+    uint perffilter_every)
 {
     const int xc    = get_global_id(0);             // x coordinate in the convolved tensor
     const int yc    = get_global_id(1);             // y coordinate in the convolved tensor
@@ -113,18 +115,27 @@ __kernel void hpvm_im2col_perfrow_generic_nchw(
         for(int xk = 0; xk < KERNEL_WIDTH; ++xk, ++output_ptr)
         {
             int x = xi + xk * DILATION_X;
-#if PAD_LEFT == 0 && PAD_TOP == 0 && PAD_RIGHT == 0 && PAD_BOTTOM == 0
-            *output_ptr = *((__global DATA_TYPE *)(input_ptr + x * src_stride_x + y * src_stride_y));
-#else  // PAD_LEFT == 0 && PAD_TOP == 0 && PAD_RIGHT == 0 && PAD_BOTTOM == 0
-            if(x < 0 || x >= SRC_WIDTH || y < 0 || y >= SRC_HEIGHT)
+
+            // Check if element is skipped
+            if((yk * KERNEL_WIDTH + xk) % (perffilter_every) != (perffilter_every - 1))
             {
-                *output_ptr = PAD_VALUE;
+#if PAD_LEFT == 0 && PAD_TOP == 0 && PAD_RIGHT == 0 && PAD_BOTTOM == 0
+                *output_ptr = *((__global DATA_TYPE *)(input_ptr + x * src_stride_x + y * src_stride_y));
+#else  // PAD_LEFT == 0 && PAD_TOP == 0 && PAD_RIGHT == 0 && PAD_BOTTOM == 0
+                if(x < 0 || x >= SRC_WIDTH || y < 0 || y >= SRC_HEIGHT)
+                {
+                    *output_ptr = PAD_VALUE;
+                }
+                else
+                {
+                    *output_ptr = *((__global DATA_TYPE *)(input_ptr + x * src_stride_x + y * src_stride_y));
+                }
+#endif // PAD_LEFT == 0 && PAD_TOP == 0 && PAD_RIGHT == 0 && PAD_BOTTOM == 0
             }
             else
             {
-                *output_ptr = *((__global DATA_TYPE *)(input_ptr + x * src_stride_x + y * src_stride_y));
+                output_ptr--;
             }
-#endif // PAD_LEFT == 0 && PAD_TOP == 0 && PAD_RIGHT == 0 && PAD_BOTTOM == 0
         }
     }
 

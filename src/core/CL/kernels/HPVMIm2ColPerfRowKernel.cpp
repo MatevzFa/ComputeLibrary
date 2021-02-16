@@ -71,7 +71,9 @@ inline TensorShape compute_hpvm_im2col_perfrow_conv_shape(const ITensorInfo *inp
     const int        channel_idx = get_data_layout_dimension_index(data_layout, DataLayoutDimension::CHANNEL);
 
     std::pair<unsigned int, unsigned int> out_dims = scaled_dimensions(output_shape[width_idx], output_shape[height_idx], kernel_dims.width, kernel_dims.height, conv_info, dilation);
-    output_shape.set(0, (output_shape[channel_idx] / num_groups * kernel_dims.area() + (has_bias ? 1 : 0))); // NOLINT
+    // Skip every -th filter element
+    output_shape.set(0, (output_shape[channel_idx] / num_groups * kernel_dims.area() + (has_bias ? 1 : 0) - (kernel_dims.area() / HPVMIm2ColPerfRowKernel::perffilter_every))); // NOLINT
+    // Skip every row
     output_shape.set(1, (out_dims.first * (out_dims.second / HPVMIm2ColPerfRowKernel::perfrow_every)));
     if(batch_size_on_z && output_shape.num_dimensions() >= 3)
     {
@@ -142,7 +144,7 @@ std::pair<Status, Window> validate_and_configure_window(ITensorInfo *input, ITen
     ARM_COMPUTE_ERROR_ON_NULLPTR(input, output);
 
     // Output tensor auto initialization if not yet initialized
-    TensorShape expected_output_shape = compute_im2col_conv_shape(input, kernel_dims, conv_info, has_bias, dilation, num_groups == 1, num_groups);
+    TensorShape expected_output_shape = compute_hpvm_im2col_perfrow_conv_shape(input, kernel_dims, conv_info, has_bias, dilation, num_groups == 1, num_groups);
 
     auto_init_if_empty(*output, input->clone()->set_tensor_shape(expected_output_shape));
 
@@ -215,6 +217,8 @@ Im2ColConfiguration configure_opencl_kernel(const ITensorInfo *input, const Size
     const unsigned int input_channel = input->dimension(channel_idx);
 
     const std::pair<unsigned int, unsigned int> convolved_dims = scaled_dimensions(input_width, input_height, kernel_dims.width, kernel_dims.height, conv_info, dilation);
+
+    LOGE("convolved_dims w=%d h=%d", convolved_dims.first, convolved_dims.second);
 
     // Im2Col configuration
     std::string                   kernel_name = "hpvm_im2col_perfrow_generic_nchw";
@@ -382,8 +386,10 @@ void HPVMIm2ColPerfRowKernel::run(const Window &window, cl::CommandQueue &queue)
     unsigned int idx = num_arguments_per_3D_tensor() + (_num_groups == 1 ? num_arguments_per_2D_tensor() : num_arguments_per_3D_tensor());
     _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(_input->info()->strides_in_bytes()[3]));
     _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(_output->info()->strides_in_bytes()[((_num_groups == 1) ? 2 : 3)]));
-    _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(perfrow_start));
+    _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(pefrow_start));
     _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(perfrow_every));
+    _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(perffilter_start));
+    _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(perffilter_every));
     do
     {
         unsigned int idx = 0;
