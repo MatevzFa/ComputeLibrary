@@ -53,7 +53,7 @@ using namespace misc::shape_calculator;
 
 namespace
 {
-inline TensorShape compute_hpvm_im2col_perfrow_conv_shape(const ITensorInfo *input, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias, const Size2D &dilation, bool batch_size_on_z,
+inline TensorShape compute_hpvm_im2col_perfrow_conv_shape(const ITensorInfo *input, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias, const HPVMIm2ColPerfInfo &perf_info, const Size2D &dilation, bool batch_size_on_z,
                                                           unsigned int num_groups = 1)
 {
     // The output shape will be the 3D shape [ out_channels * kernel_area, num_elems_per_out_channel, batches ]                           if batch_size_on_z == true
@@ -72,9 +72,9 @@ inline TensorShape compute_hpvm_im2col_perfrow_conv_shape(const ITensorInfo *inp
 
     std::pair<unsigned int, unsigned int> out_dims = scaled_dimensions(output_shape[width_idx], output_shape[height_idx], kernel_dims.width, kernel_dims.height, conv_info, dilation);
     // Skip every -th filter element
-    output_shape.set(0, (output_shape[channel_idx] / num_groups * (kernel_dims.area() - (kernel_dims.area() / HPVMIm2ColPerfRowKernel::perffilter_every)) + (has_bias ? 1 : 0))); // NOLINT
+    output_shape.set(0, (output_shape[channel_idx] / num_groups * (kernel_dims.area() - (kernel_dims.area() / perf_info.perffilter_every)) + (has_bias ? 1 : 0))); // NOLINT
     // Skip every row
-    output_shape.set(1, (out_dims.first * (out_dims.second / HPVMIm2ColPerfRowKernel::perfrow_every)));
+    output_shape.set(1, (out_dims.first * (out_dims.second / perf_info.perfrow_every)));
     if(batch_size_on_z && output_shape.num_dimensions() >= 3)
     {
         output_shape.remove_dimension(2);
@@ -95,7 +95,7 @@ struct Im2ColConfiguration
     bool                  is_padding_required_nchw{};
 };
 
-Status validate_arguments(const ITensorInfo *input, const ITensorInfo *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias, const Size2D &dilation,
+Status validate_arguments(const ITensorInfo *input, const ITensorInfo *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias, const HPVMIm2ColPerfInfo &perf_info, const Size2D &dilation,
                           unsigned int num_groups)
 {
     const unsigned int channel_idx = get_data_layout_dimension_index(input->data_layout(), DataLayoutDimension::CHANNEL);
@@ -119,7 +119,7 @@ Status validate_arguments(const ITensorInfo *input, const ITensorInfo *output, c
 
     if(output->total_size() > 0)
     {
-        const TensorInfo tensor_info_output = output->clone()->set_tensor_shape(compute_hpvm_im2col_perfrow_conv_shape(input, kernel_dims, conv_info, has_bias, dilation, num_groups == 1, num_groups));
+        const TensorInfo tensor_info_output = output->clone()->set_tensor_shape(compute_hpvm_im2col_perfrow_conv_shape(input, kernel_dims, conv_info, has_bias, perf_info, dilation, num_groups == 1, num_groups));
         LOGE("expected %ld %ld %ld %ld",
              tensor_info_output.tensor_shape()[0],
              tensor_info_output.tensor_shape()[1],
@@ -138,13 +138,13 @@ Status validate_arguments(const ITensorInfo *input, const ITensorInfo *output, c
     return Status{};
 }
 
-std::pair<Status, Window> validate_and_configure_window(ITensorInfo *input, ITensorInfo *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias, const Size2D &dilation,
+std::pair<Status, Window> validate_and_configure_window(ITensorInfo *input, ITensorInfo *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias, const HPVMIm2ColPerfInfo &perf_info, const Size2D &dilation,
                                                         unsigned int num_elems_processed_per_iteration, bool is_padding_required_nchw, unsigned int num_groups)
 {
     ARM_COMPUTE_ERROR_ON_NULLPTR(input, output);
 
     // Output tensor auto initialization if not yet initialized
-    TensorShape expected_output_shape = compute_hpvm_im2col_perfrow_conv_shape(input, kernel_dims, conv_info, has_bias, dilation, num_groups == 1, num_groups);
+    TensorShape expected_output_shape = compute_hpvm_im2col_perfrow_conv_shape(input, kernel_dims, conv_info, has_bias, perf_info, dilation, num_groups == 1, num_groups);
 
     auto_init_if_empty(*output, input->clone()->set_tensor_shape(expected_output_shape));
 
@@ -268,21 +268,28 @@ HPVMIm2ColPerfRowKernel::HPVMIm2ColPerfRowKernel()
 {
 }
 
-void HPVMIm2ColPerfRowKernel::configure(const ICLTensor *input, ICLTensor *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias, const Size2D &dilation,
-                                        unsigned int num_groups)
+void HPVMIm2ColPerfRowKernel::configure(const ICLTensor *input, ICLTensor *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias,
+                                        const HPVMIm2ColPerfInfo &perf_info,
+                                        const Size2D &dilation, unsigned int num_groups)
 {
-    configure(CLKernelLibrary::get().get_compile_context(), input, output, kernel_dims, conv_info, has_bias, dilation, num_groups);
+    configure(CLKernelLibrary::get().get_compile_context(),
+              input, output, kernel_dims, conv_info, has_bias,
+              perf_info,
+              dilation, num_groups);
 }
 
-void HPVMIm2ColPerfRowKernel::configure(const CLCompileContext &compile_context, const ICLTensor *input, ICLTensor *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias,
-                                        const Size2D &dilation,
-                                        unsigned int  num_groups)
+void HPVMIm2ColPerfRowKernel::configure(const CLCompileContext &compile_context,
+                                        const ICLTensor *input, ICLTensor *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias,
+                                        const HPVMIm2ColPerfInfo &perf_info,
+                                        const Size2D &dilation, unsigned int num_groups)
 {
     ARM_COMPUTE_ERROR_ON_NULLPTR(input, output);
-    ARM_COMPUTE_ERROR_THROW_ON(validate_arguments(input->info(), output->info(), kernel_dims, conv_info, has_bias, dilation, num_groups));
+    ARM_COMPUTE_ERROR_THROW_ON(validate_arguments(input->info(), output->info(), kernel_dims, conv_info, has_bias, perf_info, dilation, num_groups));
 
     auto padding_info = get_padding_info({ input, output });
     _data_layout      = input->info()->data_layout();
+
+    _perf_info = perf_info;
 
     const unsigned int width_idx    = get_data_layout_dimension_index(_data_layout, DataLayoutDimension::WIDTH);
     const unsigned int height_idx   = get_data_layout_dimension_index(_data_layout, DataLayoutDimension::HEIGHT);
@@ -306,7 +313,7 @@ void HPVMIm2ColPerfRowKernel::configure(const CLCompileContext &compile_context,
     _num_groups                        = num_groups;
 
     // Configure kernel window
-    auto win_config = validate_and_configure_window(input->info(), output->info(), kernel_dims, conv_info, has_bias, dilation, im2col_config.num_elems_processed_per_iteration,
+    auto win_config = validate_and_configure_window(input->info(), output->info(), kernel_dims, conv_info, has_bias, perf_info, dilation, im2col_config.num_elems_processed_per_iteration,
                                                     im2col_config.is_padding_required_nchw, num_groups);
     ARM_COMPUTE_ERROR_THROW_ON(win_config.first);
     ICLKernel::configure_internal(win_config.second);
@@ -327,12 +334,12 @@ void HPVMIm2ColPerfRowKernel::configure(const CLCompileContext &compile_context,
     ARM_COMPUTE_ERROR_ON(input->info()->data_layout() == DataLayout::NHWC && has_padding_changed(padding_info));
 }
 
-Status HPVMIm2ColPerfRowKernel::validate(const ITensorInfo *input, const ITensorInfo *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias, const Size2D &dilation,
+Status HPVMIm2ColPerfRowKernel::validate(const ITensorInfo *input, const ITensorInfo *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias, const HPVMIm2ColPerfInfo &perf_info, const Size2D &dilation,
                                          unsigned int num_groups)
 {
-    ARM_COMPUTE_RETURN_ON_ERROR(validate_arguments(input, output, kernel_dims, conv_info, has_bias, dilation, num_groups));
+    ARM_COMPUTE_RETURN_ON_ERROR(validate_arguments(input, output, kernel_dims, conv_info, has_bias, perf_info, dilation, num_groups));
     Im2ColConfiguration im2col_config = configure_opencl_kernel(input, kernel_dims, conv_info, has_bias, dilation, num_groups);
-    ARM_COMPUTE_RETURN_ON_ERROR(validate_and_configure_window(input->clone().get(), output->clone().get(), kernel_dims, conv_info, has_bias, dilation, im2col_config.num_elems_processed_per_iteration,
+    ARM_COMPUTE_RETURN_ON_ERROR(validate_and_configure_window(input->clone().get(), output->clone().get(), kernel_dims, conv_info, has_bias, perf_info, dilation, im2col_config.num_elems_processed_per_iteration,
                                                               im2col_config.is_padding_required_nchw, num_groups)
                                     .first);
     return Status{};
@@ -386,10 +393,10 @@ void HPVMIm2ColPerfRowKernel::run(const Window &window, cl::CommandQueue &queue)
     unsigned int idx = num_arguments_per_3D_tensor() + (_num_groups == 1 ? num_arguments_per_2D_tensor() : num_arguments_per_3D_tensor());
     _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(_input->info()->strides_in_bytes()[3]));
     _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(_output->info()->strides_in_bytes()[((_num_groups == 1) ? 2 : 3)]));
-    _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(pefrow_start));
-    _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(perfrow_every));
-    _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(perffilter_start));
-    _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(perffilter_every));
+    _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(_perf_info.perfrow_start));
+    _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(_perf_info.perfrow_every));
+    _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(_perf_info.perffilter_start));
+    _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(_perf_info.perffilter_every));
     do
     {
         unsigned int idx = 0;

@@ -27,9 +27,36 @@
 #include "arm_compute/core/Size2D.h"
 #include "src/core/CL/ICLKernel.h"
 
+#include <cstddef>
+
 namespace arm_compute
 {
 class ICLTensor;
+
+struct HPVMIm2ColPerfInfo
+{
+    size_t perfrow_start = 0;
+    size_t perfrow_every = 0;
+
+    size_t perffilter_start = 0;
+    size_t perffilter_every = 0;
+
+    static HPVMIm2ColPerfInfo perfrow(size_t start, size_t every)
+    {
+        auto info          = HPVMIm2ColPerfInfo{};
+        info.perfrow_start = start;
+        info.perfrow_every = every;
+        return info;
+    };
+
+    static HPVMIm2ColPerfInfo perffilter(size_t start, size_t every)
+    {
+        auto info             = HPVMIm2ColPerfInfo{};
+        info.perffilter_start = start;
+        info.perffilter_every = every;
+        return info;
+    };
+};
 
 /** Interface for the im2col reshape kernel.
  *
@@ -56,12 +83,6 @@ class ICLTensor;
 class HPVMIm2ColPerfRowKernel : public ICLKernel
 {
 public:
-    static const size_t pefrow_start  = 0; //
-    static const size_t perfrow_every = 2; // Skip every second row
-
-    static const size_t perffilter_start = 0; //
-    static const size_t perffilter_every = 5; // Skip central element
-
     /** Default constructor */
     HPVMIm2ColPerfRowKernel();
     /** Prevent instances of this class from being copied (As this class contains pointers) */
@@ -87,8 +108,9 @@ public:
      *                         Number of groups other than 1 is only supported for NCHW data layout.
      *                         Number of groups should be multiple to the number of channels.
      */
-    void configure(const ICLTensor *input, ICLTensor *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias, const Size2D &dilation = Size2D(1U, 1U),
-                   unsigned int num_groups = 1);
+    void configure(const ICLTensor *input, ICLTensor *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias,
+                   const HPVMIm2ColPerfInfo &perf_info,
+                   const Size2D &dilation = Size2D(1U, 1U), unsigned int num_groups = 1);
     /** Set the input and output of the kernel.
      *
      * @param[in]  compile_context The compile context to be used.
@@ -102,9 +124,10 @@ public:
      * @param[in]  dilation        (Optional) Dilation, in elements, across x and y. Defaults to (1, 1).
      * @param[in]  num_groups      (Optional) Number of groups when performing a grouped convolution. num_groups != 1 is only supported for NCHW data layout
      */
-    void configure(const CLCompileContext &compile_context, const ICLTensor *input, ICLTensor *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias,
-                   const Size2D &dilation   = Size2D(1U, 1U),
-                   unsigned int  num_groups = 1);
+    void configure(const CLCompileContext &compile_context,
+                   const ICLTensor *input, ICLTensor *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias,
+                   const HPVMIm2ColPerfInfo &perf_info,
+                   const Size2D &dilation = Size2D(1U, 1U), unsigned int num_groups = 1);
     /** Static function to check if given info will lead to a valid configuration of @ref HPVMIm2ColPerfRowKernel
      *
      * @param[in] input       The input tensor to convert. 3 lower dimensions represent a single input [width, height, IFM],
@@ -122,7 +145,7 @@ public:
      *
      * @return a status
      */
-    static Status validate(const ITensorInfo *input, const ITensorInfo *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias, const Size2D &dilation = Size2D(1U, 1U),
+    static Status validate(const ITensorInfo *input, const ITensorInfo *output, const Size2D &kernel_dims, const PadStrideInfo &conv_info, bool has_bias, const HPVMIm2ColPerfInfo &perf_info, const Size2D &dilation = Size2D(1U, 1U),
                            unsigned int num_groups = 1);
 
     // Inherited methods overridden:
@@ -137,6 +160,8 @@ public:
     Size2D                                _kernel_dims;
     PadStrideInfo                         _conv_info;
     unsigned int                          _num_groups;
+
+    HPVMIm2ColPerfInfo _perf_info;
 };
 } // namespace arm_compute
 #endif /*ARM_COMPUTE_HPVMIM2COLPERFROWKERNEL_H */
