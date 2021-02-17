@@ -71,10 +71,39 @@ inline TensorShape compute_hpvm_im2col_perfrow_conv_shape(const ITensorInfo *inp
     const int        channel_idx = get_data_layout_dimension_index(data_layout, DataLayoutDimension::CHANNEL);
 
     std::pair<unsigned int, unsigned int> out_dims = scaled_dimensions(output_shape[width_idx], output_shape[height_idx], kernel_dims.width, kernel_dims.height, conv_info, dilation);
+
+    // LOGE("out_dims %d %d", out_dims.first, out_dims.second);
+
+    // LOGE(
+    //     "compute_hpvm_im2col_perfrow_conv_shape "
+    //     "%ld %d %ld %ld",
+    //     output_shape[channel_idx], num_groups, kernel_dims.area(), perf_info.perffilter_every);
     // Skip every -th filter element
-    output_shape.set(0, (output_shape[channel_idx] / num_groups * (kernel_dims.area() - (kernel_dims.area() / perf_info.perffilter_every)) + (has_bias ? 1 : 0))); // NOLINT
+
+    if(perf_info.perffilter_every < 2)
+    {
+        output_shape.set(0, (output_shape[channel_idx] / num_groups * (kernel_dims.area()) + (has_bias ? 1 : 0))); // NOLINT
+    }
+    else
+    {
+        output_shape.set(0, (output_shape[channel_idx] / num_groups * (kernel_dims.area() - (kernel_dims.area() / perf_info.perffilter_every)) + (has_bias ? 1 : 0))); // NOLINT
+    }
+
+    // LOGE("num dims %d", output_shape.num_dimensions());
+
+    // LOGE("=%ld", (output_shape[channel_idx] / num_groups * (kernel_dims.area() - (kernel_dims.area() / perf_info.perffilter_every)) + (has_bias ? 1 : 0)));
+    // LOGE("=%ld", output_shape[0]);
     // Skip every row
-    output_shape.set(1, (out_dims.first * (out_dims.second / perf_info.perfrow_every)));
+    if(perf_info.perfrow_every < 2)
+    {
+        output_shape.set(1, (out_dims.first * out_dims.second));
+    }
+    else
+    {
+        output_shape.set(1, (out_dims.first * (out_dims.second / (perf_info.perfrow_every))));
+    }
+
+    // LOGE("num dims %d", output_shape.num_dimensions());
     if(batch_size_on_z && output_shape.num_dimensions() >= 3)
     {
         output_shape.remove_dimension(2);
@@ -84,6 +113,7 @@ inline TensorShape compute_hpvm_im2col_perfrow_conv_shape(const ITensorInfo *inp
         output_shape.set(2, num_groups);
     }
 
+    // LOGE("BEFORE RETURN %ld %ld %ld %ld", output_shape[0], output_shape[1], output_shape[2], output_shape[3]);
     return output_shape;
 }
 

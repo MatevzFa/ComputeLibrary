@@ -41,6 +41,10 @@
 #include <set>
 #include <string>
 
+#include <android/log.h>
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "ARMComputeLibrary", __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "ARMComputeLibrary", __VA_ARGS__)
+
 namespace arm_compute
 {
 using namespace arm_compute::misc::shape_calculator;
@@ -62,7 +66,7 @@ inline Status validate_arguments(const ITensorInfo *input0, const ITensorInfo *i
     ARM_COMPUTE_RETURN_ERROR_ON_MSG(is_interleaved_transposed && reshape_info.reinterpret_input_as_3d(), "The input tensor cannot be reinterpreted as 3D if is_interleaved_transposed is true");
     ARM_COMPUTE_RETURN_ERROR_ON_MSG(input1->num_dimensions() > 2 && reshape_info.reinterpret_input_as_3d(), "The input1 tensor cannot have more than 2 dimensions if input0 has to be reinterpreted as 3D");
     ARM_COMPUTE_RETURN_ERROR_ON_MSG((reshape_info.reinterpret_input_as_3d() || reshape_info.depth_output_gemm3d() != 0) && (input2 != nullptr)
-                                    && (!reshape_info.broadcast_bias()),
+                                        && (!reshape_info.broadcast_bias()),
                                     "Bias addition only supported with broadcast mode in case the input or output has to be reinterpreted as 3D");
 
     if(!is_interleaved_transposed)
@@ -143,7 +147,31 @@ inline Status validate_arguments(const ITensorInfo *input0, const ITensorInfo *i
 
     if(output->total_size() != 0)
     {
+        LOGE("got input0 %ld %ld %ld %ld",
+             input0->tensor_shape()[0],
+             input0->tensor_shape()[1],
+             input0->tensor_shape()[2],
+             input0->tensor_shape()[3]);
+
+        LOGE("got input1 %ld %ld %ld %ld",
+             input1->tensor_shape()[0],
+             input1->tensor_shape()[1],
+             input1->tensor_shape()[2],
+             input1->tensor_shape()[3]);
+
         const TensorInfo tensor_info_output = output->clone()->set_tensor_shape(compute_mm_shape(*input0, *input1, is_interleaved_transposed, reshape_info));
+
+        LOGE("expected %ld %ld %ld %ld",
+             tensor_info_output.tensor_shape()[0],
+             tensor_info_output.tensor_shape()[1],
+             tensor_info_output.tensor_shape()[2],
+             tensor_info_output.tensor_shape()[3]);
+        LOGE("got %ld %ld %ld %ld",
+             output->tensor_shape()[0],
+             output->tensor_shape()[1],
+             output->tensor_shape()[2],
+             output->tensor_shape()[3]);
+
         ARM_COMPUTE_RETURN_ERROR_ON_MISMATCHING_SHAPES(output, &tensor_info_output);
         ARM_COMPUTE_RETURN_ERROR_ON_MISMATCHING_DATA_TYPES(input0, output);
     }
@@ -161,8 +189,8 @@ inline std::pair<Status, Window> validate_and_configure_window(ITensorInfo *inpu
     Window win_out{};
 
     const DataType data_type                           = input0->data_type();
-    unsigned int &num_elems_processed_per_iteration_x = num_elements_processed[0];
-    unsigned int &num_elems_processed_per_iteration_y = num_elements_processed[1];
+    unsigned int & num_elems_processed_per_iteration_x = num_elements_processed[0];
+    unsigned int & num_elems_processed_per_iteration_y = num_elements_processed[1];
     bool           reinterpret_input_as_3d             = reshape_info.reinterpret_input_as_3d();
     bool           reinterpret_output_as_3d            = (reshape_info.depth_output_gemm3d() != 0);
 
@@ -267,8 +295,7 @@ inline std::pair<Status, Window> validate_and_configure_window(ITensorInfo *inpu
 } // namespace
 
 CLGEMMMatrixMultiplyKernel::CLGEMMMatrixMultiplyKernel()
-    : _input0(nullptr), _input1(nullptr), _input2(nullptr), _output(nullptr), _slide_matrix_b(true), _reinterpret_input_as_3d(false), _reinterpret_output_as_3d(false), _add_bias(false),
-      _broadcast_bias(false)
+    : _input0(nullptr), _input1(nullptr), _input2(nullptr), _output(nullptr), _slide_matrix_b(true), _reinterpret_input_as_3d(false), _reinterpret_output_as_3d(false), _add_bias(false), _broadcast_bias(false)
 {
 }
 
@@ -472,7 +499,7 @@ Status CLGEMMMatrixMultiplyKernel::validate(const ITensorInfo *input0, const ITe
                                                               reshape_info,
                                                               gpu_target,
                                                               num_elements_processed)
-                                .first);
+                                    .first);
 
     return Status{};
 }
@@ -538,7 +565,6 @@ void CLGEMMMatrixMultiplyKernel::run(const Window &window, cl::CommandQueue &que
         }
         _kernel.setArg<cl_uint>(idx++, static_cast<unsigned int>(_output->info()->strides_in_bytes()[2]));
         enqueue(queue, *this, slice, lws_hint());
-    }
-    while(window.slide_window_slice_3D(slice));
+    } while(window.slide_window_slice_3D(slice));
 }
 } // namespace arm_compute

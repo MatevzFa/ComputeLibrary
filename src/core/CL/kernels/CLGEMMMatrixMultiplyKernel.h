@@ -111,7 +111,7 @@ public:
     const ICLTensor *_input0;
     const ICLTensor *_input1;
     const ICLTensor *_input2;
-    ICLTensor       *_output;
+    ICLTensor *      _output;
     bool             _slide_matrix_b;
     bool             _reinterpret_input_as_3d;
     bool             _reinterpret_output_as_3d;
