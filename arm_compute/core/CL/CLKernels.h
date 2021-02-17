@@ -161,6 +161,7 @@
 #include "src/core/CL/kernels/ICLDepthwiseConvolutionLayer3x3Kernel.h"
 
 #include "src/core/CL/kernels/HPVMAccumulateKernel.h"
+#include "src/core/CL/kernels/HPVMFilterPerfKernel.h"
 #include "src/core/CL/kernels/HPVMIm2ColPerfRowKernel.h"
 
 #endif /* ARM_COMPUTE_CLKERNELS_H */
