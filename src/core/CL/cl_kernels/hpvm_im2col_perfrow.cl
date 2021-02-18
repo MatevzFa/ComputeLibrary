@@ -88,9 +88,16 @@ __kernel void hpvm_im2col_perfrow_generic_nchw(
     const int ch    = get_global_id(2) % SRC_DEPTH; // input feature map
     const int batch = get_global_id(2) / SRC_DEPTH; // batch size
 
+    // if(xc == 0 && yc == 0 && get_global_id(2) == 0)
+    // {
+    //     printf("{rs=%d re=%d fs=%d fe=%d}\n", perfrow_start, perfrow_every, perffilter_start, perffilter_every);
+    // }
+
+    uint perfrow_every_eff = (perfrow_every < 2 ? 1 : perfrow_every);
+
     // Calculate input indices
     const int xi = xc * STRIDE_X - PAD_LEFT;
-    const int yi = yc * perfrow_every * STRIDE_Y - PAD_TOP;
+    const int yi = yc * perfrow_every_eff * STRIDE_Y - PAD_TOP;
 
     // Calculate output indices
 #if defined(NUM_GROUPS)
@@ -103,10 +110,15 @@ __kernel void hpvm_im2col_perfrow_generic_nchw(
 
     __global uchar *input_ptr = src_ptr + src_offset_first_element_in_bytes + ch * src_stride_z + batch * src_stride_w;
 #if defined(NUM_GROUPS)
-    __global DATA_TYPE *output_ptr = ((__global DATA_TYPE *)(dst_ptr + dst_offset_first_element_in_bytes + yo * dst_stride_y + zo * dst_stride_z + batch * dst_stride_w)) + xo - ch * (KERNEL_HEIGHT * KERNEL_WIDTH / perffilter_every);
+    __global DATA_TYPE *output_ptr = ((__global DATA_TYPE *)(dst_ptr + dst_offset_first_element_in_bytes + yo * dst_stride_y + zo * dst_stride_z + batch * dst_stride_w)) + xo;
 #else  // defined(NUM_GROUPS)
-    __global DATA_TYPE *output_ptr = ((__global DATA_TYPE *)(dst_ptr + dst_offset_first_element_in_bytes + yo * dst_stride_y + batch * dst_stride_w)) + xo - ch * (KERNEL_HEIGHT * KERNEL_WIDTH / perffilter_every);
+    __global DATA_TYPE *output_ptr = ((__global DATA_TYPE *)(dst_ptr + dst_offset_first_element_in_bytes + yo * dst_stride_y + batch * dst_stride_w)) + xo;
 #endif // defined(NUM_GROUPS)
+
+    if(perffilter_every >= 2)
+    {
+        output_ptr -= ch * (KERNEL_HEIGHT * KERNEL_WIDTH / perffilter_every);
+    }
 
     // Linearize convolution elements
     for(int yk = 0; yk < KERNEL_HEIGHT; ++yk)
@@ -124,6 +136,7 @@ __kernel void hpvm_im2col_perfrow_generic_nchw(
 #else  // PAD_LEFT == 0 && PAD_TOP == 0 && PAD_RIGHT == 0 && PAD_BOTTOM == 0
                 if(x < 0 || x >= SRC_WIDTH || y < 0 || y >= SRC_HEIGHT)
                 {
+                    // printf("{padding x=%d SRC_WIDTH=%d y=%d SRC_HEIGHT=%d}\n", x, SRC_WIDTH, y, SRC_HEIGHT);
                     *output_ptr = PAD_VALUE;
                 }
                 else
