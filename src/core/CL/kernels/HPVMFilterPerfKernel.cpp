@@ -46,14 +46,14 @@ void HPVMFilterPerfKernel::configure(const CLCompileContext &compile_context,
     auto out_w = output->info()->dimension(w_idx);
 
     auto in_filter_elements  = in_h * in_w;
-    auto out_filter_elements = in_filter_elements - in_filter_elements / perf_info.perf_every;
+    auto out_filter_elements = in_filter_elements - (perf_info.perf_every < 2 ? 0 : in_filter_elements / perf_info.perf_every);
 
     CLBuildOptions opts{};
     opts.add_option("-DDATA_TYPE=" + get_cl_type_from_data_type(input->info()->data_type()));
 
     _kernel = create_kernel(compile_context, "hpvm_filterperf", opts.options());
 
-    int idx = 2 * num_arguments_per_2D_tensor();
+    int idx = num_arguments_per_4D_tensor() + num_arguments_per_2D_tensor();
     _kernel.setArg<cl_uint>(idx++, in_filter_elements);
     _kernel.setArg<cl_uint>(idx++, out_filter_elements);
     _kernel.setArg<cl_uint>(idx++, in_w);
@@ -73,7 +73,7 @@ Status HPVMFilterPerfKernel::validate(const ITensorInfo *input, const ITensorInf
     ARM_COMPUTE_UNUSED(input, output, perf_info);
 
     ARM_COMPUTE_RETURN_ERROR_ON_MSG(perf_info.perf_start != 0, "Only perf_start == 0 supported");
-    ARM_COMPUTE_RETURN_ERROR_ON(perf_info.perf_every < 2);
+    // ARM_COMPUTE_RETURN_ERROR_ON(perf_info.perf_every < 2);
 
     auto n_idx = get_data_layout_dimension_index(input->data_layout(), DataLayoutDimension::BATCHES);
     auto c_idx = get_data_layout_dimension_index(input->data_layout(), DataLayoutDimension::CHANNEL);
@@ -93,7 +93,7 @@ Status HPVMFilterPerfKernel::validate(const ITensorInfo *input, const ITensorInf
     auto out_w = output->dimension(w_idx);
 
     auto in_filter_elements  = in_h * in_w;
-    auto out_filter_elements = in_filter_elements - in_filter_elements / perf_info.perf_every;
+    auto out_filter_elements = in_filter_elements - (perf_info.perf_every < 2 ? 0 : in_filter_elements / perf_info.perf_every);
 
     ARM_COMPUTE_RETURN_ERROR_ON(out_n != 1);
     ARM_COMPUTE_RETURN_ERROR_ON(out_c != 1);
@@ -109,7 +109,7 @@ void HPVMFilterPerfKernel::run(const Window &window, cl::CommandQueue &queue)
     do
     {
         unsigned int idx = 0;
-        add_2D_tensor_argument(idx, _input, slice);
+        add_4D_tensor_argument(idx, _input, slice);
         add_2D_tensor_argument(idx, _output, slice);
         enqueue(queue, *this, slice);
     } while(window.slide_window_slice_2D(slice));
