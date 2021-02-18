@@ -2,6 +2,7 @@
 #include "arm_compute/core/CL/CLKernelLibrary.h"
 #include "arm_compute/core/Error.h"
 #include "arm_compute/core/Helpers.h"
+#include "arm_compute/core/TensorShape.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/core/Validate.h"
 #include "arm_compute/runtime/CL/CLScheduler.h"
@@ -90,7 +91,11 @@ void HPVMConvApprox::configure(const CLCompileContext &compile_context,
     TensorShape filter_tensor_shape;
     filter_tensor_shape.set(0, nfilters);
     filter_tensor_shape.set(1, _im2col_tensor.info()->dimension(w_idx));
-    _filter_tensor.allocator()->init(weights->info()->clone()->set_tensor_shape(filter_tensor_shape));
+
+    TensorInfo filter_tensor_info(
+        filter_tensor_shape, 1,
+        weights->info()->data_type(), weights->info()->data_layout());
+    _filter_tensor.allocator()->init(filter_tensor_info);
 
     // Init kernels
     switch(perf_info.mode)
@@ -99,8 +104,7 @@ void HPVMConvApprox::configure(const CLCompileContext &compile_context,
         {
             _im2col_kernel->configure(input, &_im2col_tensor, kernel_shape, conv_info, false,
                                       HPVMIm2ColPerfInfo::perfrow(perf_info.perf_start, perf_info.perf_every));
-            _filterperf_kernel->configure(weights, &_filter_tensor,
-                                          HPVMFilterPerfInfo(perf_info.perf_start, perf_info.perf_every));
+            _filterperf_kernel->configure(weights, &_filter_tensor, HPVMFilterPerfInfo(0, 0));
         }
         break;
 
@@ -112,13 +116,15 @@ void HPVMConvApprox::configure(const CLCompileContext &compile_context,
 
         case HPVMConvApproxPerfMode::FILTER:
         {
-            LOGE("input          %ld %ld %ld %ld", input->info()->dimension(0), input->info()->dimension(1), input->info()->dimension(2), input->info()->dimension(3));
-            LOGE("kernel_shape   %ld %ld", kernel_shape.width, kernel_shape.height);
-            LOGE("_im2col_tensor %ld %ld %ld %ld", _im2col_tensor.info()->dimension(0), _im2col_tensor.info()->dimension(1), _im2col_tensor.info()->dimension(2), _im2col_tensor.info()->dimension(3));
+            // LOGE("input          %ld %ld %ld %ld", input->info()->dimension(0), input->info()->dimension(1), input->info()->dimension(2), input->info()->dimension(3));
+            // LOGE("weights        %ld %ld %ld %ld", weights->info()->dimension(0), weights->info()->dimension(1), weights->info()->dimension(2), weights->info()->dimension(3));
+            // LOGE("kernel_shape   %ld %ld", kernel_shape.width, kernel_shape.height);
+            // LOGE("_im2col_tensor %ld %ld %ld %ld", _im2col_tensor.info()->dimension(0), _im2col_tensor.info()->dimension(1), _im2col_tensor.info()->dimension(2), _im2col_tensor.info()->dimension(3));
+            // LOGE("_filter_tensor %ld %ld %ld %ld", _filter_tensor.info()->dimension(0), _filter_tensor.info()->dimension(1), _filter_tensor.info()->dimension(2), _filter_tensor.info()->dimension(3));
             _im2col_kernel->configure(input, &_im2col_tensor, kernel_shape, conv_info, false,
                                       HPVMIm2ColPerfInfo::perffilter(perf_info.perf_start, perf_info.perf_every));
             _filterperf_kernel->configure(weights, &_filter_tensor,
-                                          HPVMFilterPerfInfo(perf_info.perf_start, perf_info.perf_every));
+                                          HPVMFilterPerfInfo(0, 2));
         }
         break;
     }
@@ -178,6 +184,7 @@ void HPVMConvApprox::run()
         LOGI("_filter_tensor\n%s", out.str().c_str());
         _filter_tensor.unmap();
     }
+
     _gemm->run();
     CLScheduler::get().sync();
 

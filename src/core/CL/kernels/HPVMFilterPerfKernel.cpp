@@ -46,7 +46,7 @@ void HPVMFilterPerfKernel::configure(const CLCompileContext &compile_context,
     auto out_w = output->info()->dimension(w_idx);
 
     auto in_filter_elements  = in_h * in_w;
-    auto out_filter_elements = in_filter_elements - (in_filter_elements - perf_info.perf_start) / perf_info.perf_every;
+    auto out_filter_elements = in_filter_elements - in_filter_elements / perf_info.perf_every;
 
     CLBuildOptions opts{};
     opts.add_option("-DDATA_TYPE=" + get_cl_type_from_data_type(input->info()->data_type()));
@@ -56,6 +56,8 @@ void HPVMFilterPerfKernel::configure(const CLCompileContext &compile_context,
     int idx = 2 * num_arguments_per_2D_tensor();
     _kernel.setArg<cl_uint>(idx++, in_filter_elements);
     _kernel.setArg<cl_uint>(idx++, out_filter_elements);
+    _kernel.setArg<cl_uint>(idx++, in_w);
+    _kernel.setArg<cl_uint>(idx++, in_h);
     _kernel.setArg<cl_uint>(idx++, in_c);
     _kernel.setArg<cl_uint>(idx++, in_n);
     _kernel.setArg<cl_uint>(idx++, perf_info.perf_start);
