@@ -41,10 +41,6 @@
 #include <set>
 #include <string>
 
-#include <android/log.h>
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "ARMComputeLibrary", __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "ARMComputeLibrary", __VA_ARGS__)
-
 namespace arm_compute
 {
 using namespace arm_compute::misc::shape_calculator;
@@ -147,31 +143,7 @@ inline Status validate_arguments(const ITensorInfo *input0, const ITensorInfo *i
 
     if(output->total_size() != 0)
     {
-        LOGE("got input0 %ld %ld %ld %ld",
-             input0->tensor_shape()[0],
-             input0->tensor_shape()[1],
-             input0->tensor_shape()[2],
-             input0->tensor_shape()[3]);
-
-        LOGE("got input1 %ld %ld %ld %ld",
-             input1->tensor_shape()[0],
-             input1->tensor_shape()[1],
-             input1->tensor_shape()[2],
-             input1->tensor_shape()[3]);
-
         const TensorInfo tensor_info_output = output->clone()->set_tensor_shape(compute_mm_shape(*input0, *input1, is_interleaved_transposed, reshape_info));
-
-        LOGE("expected %ld %ld %ld %ld",
-             tensor_info_output.tensor_shape()[0],
-             tensor_info_output.tensor_shape()[1],
-             tensor_info_output.tensor_shape()[2],
-             tensor_info_output.tensor_shape()[3]);
-        LOGE("got %ld %ld %ld %ld",
-             output->tensor_shape()[0],
-             output->tensor_shape()[1],
-             output->tensor_shape()[2],
-             output->tensor_shape()[3]);
-
         ARM_COMPUTE_RETURN_ERROR_ON_MISMATCHING_SHAPES(output, &tensor_info_output);
         ARM_COMPUTE_RETURN_ERROR_ON_MISMATCHING_DATA_TYPES(input0, output);
     }
