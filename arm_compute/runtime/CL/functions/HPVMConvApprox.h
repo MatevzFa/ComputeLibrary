@@ -6,6 +6,8 @@
 #include "arm_compute/core/Error.h"
 #include "arm_compute/runtime/CL/CLTensor.h"
 #include "arm_compute/runtime/CL/functions/CLGEMM.h"
+#include "arm_compute/runtime/CL/functions/CLReshapeLayer.h"
+#include "arm_compute/runtime/CL/functions/CLTranspose.h"
 #include "arm_compute/runtime/IFunction.h"
 #include "arm_compute/runtime/IMemoryManager.h"
 #include "arm_compute/runtime/MemoryGroup.h"
@@ -21,13 +23,19 @@ enum HPVMConvApproxPerfMode
     ROW,
     COL,
     FILTER,
+    NONE,
 };
 
 struct HPVMConvApproxInfo
 {
-    const HPVMConvApproxPerfMode mode;
-    const size_t                 perf_start;
-    const size_t                 perf_every;
+    HPVMConvApproxPerfMode mode;
+    size_t                 perf_start;
+    size_t                 perf_every;
+
+    HPVMConvApproxInfo()
+        : mode(HPVMConvApproxPerfMode::NONE), perf_start(0), perf_every(0)
+    {
+    }
 
     HPVMConvApproxInfo(HPVMConvApproxPerfMode mode, size_t start, size_t every)
         : mode(mode),
@@ -35,6 +43,8 @@ struct HPVMConvApproxInfo
           perf_every(every)
     {
     }
+
+    // HPVMConvApproxInfo &operator=(const HPVMConvApproxInfo &info) = default;
 
     static HPVMConvApproxInfo from_hpvm(int row, int col, int skip_every, int offset)
     {
@@ -89,10 +99,16 @@ private:
     CLTensor _im2col_tensor;
     CLTensor _filter_tensor;
     CLTensor _gemm_output;
+    CLTensor _gemm_output_transposed;
 
     std::unique_ptr<HPVMIm2ColPerfRowKernel> _im2col_kernel;
     std::unique_ptr<HPVMFilterPerfKernel>    _filterperf_kernel;
     std::unique_ptr<CLGEMM>                  _gemm;
+
+    CLTranspose    _transpose;
+    CLReshapeLayer _reshape;
+
+    HPVMConvApproxInfo _perf_info;
 };
 }; // namespace arm_compute
 

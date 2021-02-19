@@ -2,6 +2,7 @@
 #include "arm_compute/core/CL/CLKernelLibrary.h"
 #include "arm_compute/core/Error.h"
 #include "arm_compute/core/Helpers.h"
+#include "arm_compute/core/TensorInfo.h"
 #include "arm_compute/core/TensorShape.h"
 #include "arm_compute/core/Types.h"
 #include "arm_compute/core/Validate.h"
@@ -39,10 +40,12 @@ void HPVMConvApprox::configure(const CLCompileContext &compile_context,
                                ICLTensor *input, const ICLTensor *weights, ICLTensor *output,
                                const PadStrideInfo &conv_info, const HPVMConvApproxInfo &perf_info)
 {
-    // ARM_COMPUTE_ERROR_THROW_ON(validate(input->info(), weights->info(), output->info(), conv_info, perf_info));
+    ARM_COMPUTE_ERROR_THROW_ON(validate(input->info(), weights->info(), output->info(), conv_info, perf_info));
 
     _im2col_kernel     = support::cpp14::make_unique<HPVMIm2ColPerfRowKernel>();
     _filterperf_kernel = support::cpp14::make_unique<HPVMFilterPerfKernel>();
+
+    _perf_info = perf_info;
 
     auto n_idx = get_data_layout_dimension_index(DataLayout::NCHW, DataLayoutDimension::BATCHES);
     auto c_idx = get_data_layout_dimension_index(DataLayout::NCHW, DataLayoutDimension::CHANNEL);
@@ -84,6 +87,9 @@ void HPVMConvApprox::configure(const CLCompileContext &compile_context,
             im2col_tensor_shape.set(2, batches);
         }
         break;
+
+        default:
+            ARM_COMPUTE_ERROR("unreachable");
     }
     _im2col_tensor.allocator()->init(input->info()->clone()->set_tensor_shape(im2col_tensor_shape));
 
@@ -127,18 +133,41 @@ void HPVMConvApprox::configure(const CLCompileContext &compile_context,
                                           HPVMFilterPerfInfo(0, 2));
         }
         break;
+
+        default:
+            ARM_COMPUTE_ERROR("unreachable");
     }
 
     // Init GEMM
-    _gemm_output.allocator()->init(output->info()->set_tensor_shape({
+    TensorInfo gemm_output_info(*output->info());
+    gemm_output_info.set_tensor_shape({
         nfilters,
         _im2col_tensor.info()->dimension(h_idx),
         batches,
-    }));
+    });
+    _gemm_output.allocator()->init(gemm_output_info);
+
+    TensorInfo gemm_output_transposed_info(*output->info());
+    gemm_output_transposed_info.set_tensor_shape({
+        _im2col_tensor.info()->dimension(h_idx),
+        nfilters,
+        batches,
+    });
+    _gemm_output_transposed.allocator()->init(gemm_output_transposed_info);
 
     _gemm = support::cpp14::make_unique<CLGEMM>();
-
     _gemm->configure(&_im2col_tensor, &_filter_tensor, nullptr, &_gemm_output, 1, 1);
+
+    _transpose.configure(&_gemm_output, &_gemm_output_transposed);
+
+    if(_perf_info.mode == HPVMConvApproxPerfMode::FILTER)
+    {
+        _reshape.configure(&_gemm_output_transposed, output);
+    }
+    else
+    {
+        ARM_COMPUTE_ERROR("unimplemented");
+    }
 }
 
 Status HPVMConvApprox::validate(const ITensorInfo *input, const ITensorInfo *weights, const ITensorInfo *output,
@@ -159,13 +188,16 @@ void HPVMConvApprox::prepare()
 
 void HPVMConvApprox::run()
 {
+    bool do_print = false;
+
     _im2col_tensor.allocator()->allocate();
     _filter_tensor.allocator()->allocate();
     _gemm_output.allocator()->allocate();
+    _gemm_output_transposed.allocator()->allocate();
 
     CLScheduler::get().enqueue(*_im2col_kernel);
-    CLScheduler::get().sync();
 
+    if(do_print)
     {
         _im2col_tensor.map();
         std::ostringstream out;
@@ -175,8 +207,8 @@ void HPVMConvApprox::run()
     }
 
     CLScheduler::get().enqueue(*_filterperf_kernel);
-    CLScheduler::get().sync();
 
+    if(do_print)
     {
         _filter_tensor.map();
         std::ostringstream out;
@@ -186,8 +218,8 @@ void HPVMConvApprox::run()
     }
 
     _gemm->run();
-    CLScheduler::get().sync();
 
+    if(do_print)
     {
         _gemm_output.map();
         std::ostringstream out;
@@ -196,7 +228,28 @@ void HPVMConvApprox::run()
         _gemm_output.unmap();
     }
 
+    _transpose.run();
+
+    if(do_print)
+    {
+        _gemm_output_transposed.map();
+        std::ostringstream out;
+        _gemm_output_transposed.print(out);
+        LOGI("_gemm_output_transposed\n%s", out.str().c_str());
+        _gemm_output_transposed.unmap();
+    }
+
+    if(_perf_info.mode == HPVMConvApproxPerfMode::FILTER)
+    {
+        _reshape.run();
+    }
+    else
+    {
+        ARM_COMPUTE_ERROR("unimplemented");
+    }
+
     _im2col_tensor.allocator()->free();
     _filter_tensor.allocator()->free();
     _gemm_output.allocator()->free();
+    _gemm_output_transposed.allocator()->free();
 }
