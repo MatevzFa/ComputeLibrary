@@ -672,7 +672,9 @@ void CLGEMMConvolutionLayer::prepare()
             // Run weights reshaping and mark original weights tensor as unused
             _weights_reshaped.allocator()->allocate();
             _reshape_weights.run();
-            _original_weights->mark_as_unused();
+            // !!! HACK !!!
+            // The following line must not execute in order for HPVM Tensor Runtime to work
+            // _original_weights->mark_as_unused();
         }
 
         // Prepare GEMM

@@ -150,16 +150,6 @@ Status validate_arguments(const ITensorInfo *input, const ITensorInfo *output, c
     if(output->total_size() > 0)
     {
         const TensorInfo tensor_info_output = output->clone()->set_tensor_shape(compute_hpvm_im2col_perfrow_conv_shape(input, kernel_dims, conv_info, has_bias, perf_info, dilation, num_groups == 1, num_groups));
-        LOGE("expected %ld %ld %ld %ld",
-             tensor_info_output.tensor_shape()[0],
-             tensor_info_output.tensor_shape()[1],
-             tensor_info_output.tensor_shape()[2],
-             tensor_info_output.tensor_shape()[3]);
-        LOGE("got %ld %ld %ld %ld",
-             output->tensor_shape()[0],
-             output->tensor_shape()[1],
-             output->tensor_shape()[2],
-             output->tensor_shape()[3]);
         ARM_COMPUTE_RETURN_ERROR_ON_MISMATCHING_SHAPES(output, &tensor_info_output);
         ARM_COMPUTE_RETURN_ERROR_ON_MISMATCHING_DATA_TYPES(input, output);
         ARM_COMPUTE_RETURN_ERROR_ON_MISMATCHING_QUANTIZATION_INFO(input, output);
@@ -247,8 +237,6 @@ Im2ColConfiguration configure_opencl_kernel(const ITensorInfo *input, const Size
     const unsigned int input_channel = input->dimension(channel_idx);
 
     const std::pair<unsigned int, unsigned int> convolved_dims = scaled_dimensions(input_width, input_height, kernel_dims.width, kernel_dims.height, conv_info, dilation);
-
-    LOGE("convolved_dims w=%d h=%d", convolved_dims.first, convolved_dims.second);
 
     // Im2Col configuration
     std::string                   kernel_name = "hpvm_im2col_perfrow_generic_nchw";
