@@ -55,11 +55,6 @@ __kernel void hpvm_interpolate_row(
         yi_0       = yo - offset;
     }
 
-    if(x == 0)
-    {
-        printf("{x=%d yo=%d chan=%d batch=%d chan_batch=%d channels=%d batches=%d y0=%d y1=%d}\n", x, yo, chan, batch, chan_batch, channels, batches, yi_0, yi_1);
-    }
-
     __global DATA_TYPE *src0_row_ptr = (__global DATA_TYPE *)(src_chan_ptr + yi_0 * src_stride_width);
     __global DATA_TYPE *src1_row_ptr = (__global DATA_TYPE *)(src_chan_ptr + yi_1 * src_stride_width);
 
