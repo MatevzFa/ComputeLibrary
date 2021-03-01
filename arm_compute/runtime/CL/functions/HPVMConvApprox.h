@@ -8,59 +8,20 @@
 #include "arm_compute/runtime/CL/functions/CLGEMM.h"
 #include "arm_compute/runtime/CL/functions/CLReshapeLayer.h"
 #include "arm_compute/runtime/CL/functions/CLTranspose.h"
+#include "arm_compute/runtime/HPVMTypes.h"
 #include "arm_compute/runtime/IFunction.h"
 #include "arm_compute/runtime/IMemoryManager.h"
 #include "arm_compute/runtime/MemoryGroup.h"
+
 #include "src/core/CL/kernels/HPVMFilterPerfKernel.h"
 #include "src/core/CL/kernels/HPVMIm2ColPerfRowKernel.h"
+#include "src/core/CL/kernels/HPVMInterpolateKernel.h"
+
 #include <cstddef>
 #include <memory>
 
 namespace arm_compute
 {
-enum HPVMConvApproxPerfMode
-{
-    ROW,
-    COL,
-    FILTER,
-    NONE,
-};
-
-struct HPVMConvApproxInfo
-{
-    HPVMConvApproxPerfMode mode;
-    size_t                 perf_start;
-    size_t                 perf_every;
-
-    HPVMConvApproxInfo()
-        : mode(HPVMConvApproxPerfMode::NONE), perf_start(0), perf_every(0)
-    {
-    }
-
-    HPVMConvApproxInfo(HPVMConvApproxPerfMode mode, size_t start, size_t every)
-        : mode(mode),
-          perf_start(start),
-          perf_every(every)
-    {
-    }
-
-    // HPVMConvApproxInfo &operator=(const HPVMConvApproxInfo &info) = default;
-
-    static HPVMConvApproxInfo from_hpvm(int row, int col, int skip_every, int offset)
-    {
-        if(row > 1)
-            return HPVMConvApproxInfo(HPVMConvApproxPerfMode::ROW, offset, row);
-
-        if(col > 1)
-            return HPVMConvApproxInfo(HPVMConvApproxPerfMode::COL, offset, col);
-
-        if(skip_every > 1)
-            return HPVMConvApproxInfo(HPVMConvApproxPerfMode::FILTER, offset, skip_every);
-
-        ARM_COMPUTE_ERROR("unreachable");
-    }
-};
-
 class HPVMConvApprox : public IFunction
 {
 public:
@@ -103,6 +64,7 @@ private:
 
     std::unique_ptr<HPVMIm2ColPerfRowKernel> _im2col_kernel;
     std::unique_ptr<HPVMFilterPerfKernel>    _filterperf_kernel;
+    std::unique_ptr<HPVMInterpolateKernel>   _interpolate_kernel;
     std::unique_ptr<CLGEMM>                  _gemm;
 
     CLTranspose    _transpose;

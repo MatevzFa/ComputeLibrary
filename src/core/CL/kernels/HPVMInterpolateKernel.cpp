@@ -2,6 +2,8 @@
 
 #include "arm_compute/core/CL/CLKernelLibrary.h"
 #include "arm_compute/core/Error.h"
+#include "arm_compute/core/Types.h"
+#include "arm_compute/core/Utils.h"
 #include "arm_compute/runtime/CL/functions/HPVMConvApprox.h"
 #include "src/core/CL/ICLKernel.h"
 #include "src/core/helpers/WindowHelpers.h"
@@ -26,15 +28,14 @@ void HPVMInterpolateKernel::configure(const CLCompileContext &compile_context,
     _output    = output;
     _perf_info = perf_info;
 
-    auto n_idx = get_data_layout_dimension_index(input->info()->data_layout(), DataLayoutDimension::BATCHES);
-    auto c_idx = get_data_layout_dimension_index(input->info()->data_layout(), DataLayoutDimension::CHANNEL);
-    auto h_idx = get_data_layout_dimension_index(input->info()->data_layout(), DataLayoutDimension::HEIGHT);
-    auto w_idx = get_data_layout_dimension_index(input->info()->data_layout(), DataLayoutDimension::WIDTH);
+    auto n_idx = get_data_layout_dimension_index(DataLayout::NCHW, DataLayoutDimension::BATCHES);
+    auto c_idx = get_data_layout_dimension_index(DataLayout::NCHW, DataLayoutDimension::CHANNEL);
+    auto h_idx = get_data_layout_dimension_index(DataLayout::NCHW, DataLayoutDimension::HEIGHT);
+    auto w_idx = get_data_layout_dimension_index(DataLayout::NCHW, DataLayoutDimension::WIDTH);
 
-    auto in_n = input->info()->dimension(n_idx);
-    auto in_c = input->info()->dimension(c_idx);
-    auto in_h = input->info()->dimension(h_idx);
-    auto in_w = input->info()->dimension(w_idx);
+    auto in_n  = input->info()->dimension(c_idx);
+    auto in_c  = input->info()->dimension(h_idx);
+    auto in_hw = input->info()->dimension(w_idx);
 
     auto out_n = output->info()->dimension(n_idx);
     auto out_c = output->info()->dimension(c_idx);
@@ -48,11 +49,14 @@ void HPVMInterpolateKernel::configure(const CLCompileContext &compile_context,
     {
         _kernel = create_kernel(compile_context, "hpvm_interpolate_row", opts.options());
 
-        int idx = 2 * num_arguments_per_4D_tensor();
+        int idx = num_arguments_per_3D_tensor() + num_arguments_per_4D_tensor();
 
+        _kernel.setArg<cl_uint>(idx++, static_cast<cl_uint>(out_w * data_size_from_type(input->info()->data_type())));
         _kernel.setArg<cl_uint>(idx++, static_cast<cl_uint>(out_h));
-        _kernel.setArg<cl_uint>(idx++, perf_info.perf_start);
-        _kernel.setArg<cl_uint>(idx++, perf_info.perf_every);
+        _kernel.setArg<cl_uint>(idx++, static_cast<cl_uint>(out_c));
+        _kernel.setArg<cl_uint>(idx++, static_cast<cl_uint>(out_n));
+        _kernel.setArg<cl_uint>(idx++, static_cast<cl_uint>(perf_info.perf_start));
+        _kernel.setArg<cl_uint>(idx++, static_cast<cl_uint>(perf_info.perf_every));
 
         Window win = calculate_max_window(*output->info());
 
@@ -73,12 +77,12 @@ Status HPVMInterpolateKernel::validate(const ITensorInfo *input, const ITensorIn
 
 void HPVMInterpolateKernel::run(const Window &window, cl::CommandQueue &queue)
 {
-    auto slice = window.first_slice_window_4D();
+    auto slice = window.collapse_if_possible(ICLKernel::window(), Window::DimZ);
 
     do
     {
         unsigned int idx = 0;
-        add_4D_tensor_argument(idx, _input, slice);
+        add_3D_tensor_argument(idx, _input, slice);
         add_4D_tensor_argument(idx, _output, slice);
         enqueue(queue, *this, slice);
     } while(slice.slide_window_slice_4D(slice));

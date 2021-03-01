@@ -2,21 +2,26 @@
 #include "helpers.h"
 
 __kernel void hpvm_interpolate_row(
-    TENSOR4D_DECLARATION(src),
+    TENSOR3D_DECLARATION(src),
     TENSOR4D_DECLARATION(dst),
+    uint src_stride_width,
     uint dst_h,
+    uint channels,
+    uint batches,
     uint perfrow_start,
     uint perfrow_every
     //
 )
 {
-    int x     = get_global_id(0); // Same
-    int yo    = get_global_id(1); // Needs mapping
-    int chan  = get_global_id(2); // Same
-    int batch = get_global_id(3); // Same
+    int x          = get_global_id(0); // Same
+    int yo         = get_global_id(1); // Needs mapping
+    int chan_batch = get_global_id(2); // Same
 
-    int src_chan_offset  = chan * src_stride_z;
-    int src_batch_offset = batch * src_stride_w;
+    int chan  = chan_batch % channels;
+    int batch = chan_batch / channels;
+
+    int src_chan_offset  = chan * src_stride_y;
+    int src_batch_offset = batch * src_stride_z;
 
     int dst_row_offset   = yo * dst_stride_y;
     int dst_chan_offset  = chan * dst_stride_z;
@@ -52,11 +57,11 @@ __kernel void hpvm_interpolate_row(
 
     if(x == 0)
     {
-        printf("{yo=%d y0=%d y1=%d}\n", yo, yi_0, yi_1);
+        printf("{x=%d yo=%d chan=%d batch=%d chan_batch=%d channels=%d batches=%d y0=%d y1=%d}\n", x, yo, chan, batch, chan_batch, channels, batches, yi_0, yi_1);
     }
 
-    __global DATA_TYPE *src0_row_ptr = (__global DATA_TYPE *)(src_chan_ptr + yi_0 * src_stride_y);
-    __global DATA_TYPE *src1_row_ptr = (__global DATA_TYPE *)(src_chan_ptr + yi_1 * src_stride_y);
+    __global DATA_TYPE *src0_row_ptr = (__global DATA_TYPE *)(src_chan_ptr + yi_0 * src_stride_width);
+    __global DATA_TYPE *src1_row_ptr = (__global DATA_TYPE *)(src_chan_ptr + yi_1 * src_stride_width);
 
     DATA_TYPE dst_val = src0_row_ptr[x];
 

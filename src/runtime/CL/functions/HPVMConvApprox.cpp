@@ -7,11 +7,13 @@
 #include "arm_compute/core/Types.h"
 #include "arm_compute/core/Validate.h"
 #include "arm_compute/runtime/CL/CLScheduler.h"
+#include "arm_compute/runtime/HPVMTypes.h"
 #include "arm_compute/runtime/IMemoryGroup.h"
 
 #include "src/core/CL/ICLKernel.h"
 #include "src/core/CL/kernels/HPVMFilterPerfKernel.h"
 #include "src/core/CL/kernels/HPVMIm2ColPerfRowKernel.h"
+#include "src/core/CL/kernels/HPVMInterpolateKernel.h"
 #include "support/MemorySupport.h"
 
 #include <android/log.h>
@@ -164,6 +166,11 @@ void HPVMConvApprox::configure(const CLCompileContext &compile_context,
     {
         _reshape.configure(&_gemm_output_transposed, output);
     }
+    else if(_perf_info.mode == HPVMConvApproxPerfMode::ROW)
+    {
+        _interpolate_kernel = support::cpp14::make_unique<HPVMInterpolateKernel>();
+        _interpolate_kernel->configure(&_gemm_output_transposed, output, perf_info);
+    }
     else
     {
         ARM_COMPUTE_ERROR("unimplemented");
@@ -242,6 +249,10 @@ void HPVMConvApprox::run()
     if(_perf_info.mode == HPVMConvApproxPerfMode::FILTER)
     {
         _reshape.run();
+    }
+    else if(_perf_info.mode == HPVMConvApproxPerfMode::ROW)
+    {
+        CLScheduler::get().enqueue(*_interpolate_kernel);
     }
     else
     {

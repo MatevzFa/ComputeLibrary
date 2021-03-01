@@ -25,8 +25,8 @@
 #define ARM_COMPUTE_HPVMINTERPOLATEKERNEL_H
 
 #include "arm_compute/core/Size2D.h"
+#include "arm_compute/runtime/HPVMTypes.h"
 
-#include "arm_compute/runtime/CL/functions/HPVMConvApprox.h"
 #include "src/core/CL/ICLKernel.h"
 
 #include <cstddef>
