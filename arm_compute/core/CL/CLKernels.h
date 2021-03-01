@@ -163,5 +163,6 @@
 #include "src/core/CL/kernels/HPVMAccumulateKernel.h"
 #include "src/core/CL/kernels/HPVMFilterPerfKernel.h"
 #include "src/core/CL/kernels/HPVMIm2ColPerfRowKernel.h"
+#include "src/core/CL/kernels/HPVMInterpolateKernel.h"
 
 #endif /* ARM_COMPUTE_CLKERNELS_H */
